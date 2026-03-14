@@ -18,7 +18,11 @@ export class SQLServerAdapter extends BaseAdapter {
       },
     };
 
-    this.pool = await mssql.connect(config);
+    try {
+      this.pool = await mssql.connect(config);
+    } catch (err: any) {
+      throw new Error(`Failed to connect to ${this.config.host}:${this.config.port} - ${err.message}`);
+    }
   }
 
   async disconnect(): Promise<void> {
