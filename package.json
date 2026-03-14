@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
   },
   "keywords": [
     "database",
@@ -21,12 +22,17 @@
   "license": "MIT",
   "dependencies": {
     "commander": "^11.1.0",
-    "prisma": "^5.9.0",
-    "sqlglot": "^20.0.0"
+    "pg": "^8.11.3",
+    "mysql2": "^3.6.5",
+    "sql.js": "^1.10.0",
+    "mssql": "^10.0.1",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/pg": "^8.10.9",
     "typescript": "^5.3.0",
-    "vitest": "^1.2.0"
+    "vitest": "^1.2.0",
+    "ts-node": "^10.9.2"
   }
 }

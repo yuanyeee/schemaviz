@@ -1,0 +1,7 @@
+# MySQL Example
+type: mysql
+host: localhost
+port: 3306
+database: myapp
+user: root
+password: mypassword

@@ -1,0 +1,32 @@
+{
+  "database": "test_db",
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        { "name": "id", "type": "INTEGER", "nullable": false, "isPrimaryKey": true, "isForeignKey": false },
+        { "name": "email", "type": "VARCHAR(255)", "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "name", "type": "VARCHAR(100)", "nullable": true, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "created_at", "type": "TIMESTAMP", "nullable": false, "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [
+        { "name": "users_pkey", "columns": ["id"], "isUnique": true }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "name": "posts",
+      "columns": [
+        { "name": "id", "type": "INTEGER", "nullable": false, "isPrimaryKey": true, "isForeignKey": false },
+        { "name": "user_id", "type": "INTEGER", "nullable": false, "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "title", "type": "VARCHAR(255)", "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "content", "type": "TEXT", "nullable": true, "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [],
+      "foreignKeys": [
+        { "name": "posts_user_fk", "columns": ["user_id"], "referencedTable": "users", "referencedColumns": ["id"] }
+      ]
+    }
+  ],
+  "generatedAt": "2026-03-14T10:00:00.000Z"
+}

@@ -1,0 +1,7 @@
+# PostgreSQL Example
+type: postgresql
+host: localhost
+port: 5432
+database: myapp
+user: postgres
+password: mypassword

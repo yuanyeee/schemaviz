@@ -1,0 +1,3 @@
+# SQLite Example
+type: sqlite
+filename: ./myapp.db

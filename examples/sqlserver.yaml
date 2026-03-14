@@ -1,0 +1,7 @@
+# SQL Server Example
+type: sqlserver
+host: localhost
+port: 1433
+database: myapp
+user: sa
+password: mypassword

@@ -13,14 +13,14 @@ program
 program
   .command('extract')
   .description('Extract schema from database')
-  .requiredOption('-c, --config <path>', 'Database config file')
-  .requiredOption('-o, --output <path>', 'Output file path')
+  .requiredOption('-c, --config <path>', 'Database config file (YAML or JSON)')
+  .requiredOption('-o, --output <path>', 'Output file path (JSON)')
   .action(extract);
 
 program
   .command('diagram')
   .description('Generate ER diagram from schema')
-  .requiredOption('-s, --schema <path>', 'Schema file path')
+  .requiredOption('-s, --schema <path>', 'Schema file path (JSON)')
   .option('-f, --format <format>', 'Output format (mermaid)', 'mermaid')
   .option('-o, --output <path>', 'Output file path')
   .action(diagram);
@@ -30,7 +30,8 @@ program
   .description('Compare two schemas')
   .requiredOption('-s1, --schema1 <path>', 'First schema file')
   .requiredOption('-s2, --schema2 <path>', 'Second schema file')
-  .option('-o, --output <path>', 'Output file path')
+  .option('-o, --output <path>', 'Output diff JSON file path')
+  .option('-m, --migration <path>', 'Output migration SQL file path')
   .action(diff);
 
 program.parse();
