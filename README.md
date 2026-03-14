@@ -10,7 +10,7 @@ Database ER diagram generator and schema diff tool for developers.
 - 📊 **Generate ER diagrams** from database schema
 - 🔄 **Compare schemas** and show differences  
 - 📝 **Generate migration scripts** with rollback support
-- 🖼️ **Export to Mermaid** format
+- 🖼️ **Export to multiple formats**: Mermaid, PlantUML, PNG, SVG, PDF
 - 🗄️ **Support multiple databases**: PostgreSQL, MySQL, SQLite, SQL Server
 
 ## Installation
@@ -46,7 +46,20 @@ schemaviz extract -c config.json -o schema.json
 Generate ER diagram from schema:
 
 ```bash
+# Mermaid format (default)
 schemaviz diagram -s schema.json -o er.md
+
+# PlantUML format
+schemaviz diagram -s schema.json -f plantuml -o er.puml
+
+# Export to PNG
+schemaviz diagram -s schema.json -o er.png
+
+# Export to SVG
+schemaviz diagram -s schema.json -o er.svg
+
+# Export to PDF
+schemaviz diagram -s schema.json -o er.pdf
 ```
 
 ### Compare Schemas
@@ -111,6 +124,16 @@ password: mypassword
 | `diagram` | Generate ER diagram from schema |
 | `diff` | Compare two schemas |
 
+### Diagram Output Formats
+
+| Format | Description |
+|--------|-------------|
+| `mermaid` | Mermaid markdown (default) |
+| `plantuml` | PlantUML format |
+| `.png` | PNG image (via Puppeteer) |
+| `.svg` | SVG vector image |
+| `.pdf` | PDF document |
+
 ## Development
 
 ```bash
@@ -131,6 +154,9 @@ schemaviz/
 ├── src/
 │   ├── index.ts           # CLI entry point
 │   ├── types.ts           # TypeScript types
+│   ├── core/
+│   │   ├── generator.ts      # Diagram generators
+│   │   └── imageGenerator.ts # Image export (PNG/SVG/PDF)
 │   ├── commands/          # CLI commands
 │   │   ├── extract.ts
 │   │   ├── diagram.ts
@@ -152,7 +178,9 @@ schemaviz/
 - [x] MySQL support
 - [x] SQLite support
 - [x] SQL Server support
-- [ ] Generate PNG/SVG images
+- [x] Mermaid export
+- [x] PlantUML export
+- [x] PNG/SVG/PDF export
 - [ ] VS Code extension
 - [ ] GitHub Action for CI/CD
 
