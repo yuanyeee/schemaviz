@@ -1,5 +1,7 @@
 import * as fs from 'fs';
-import { Schema, Table, Column } from '../types';
+import { Schema, DiagramFormat } from '../types';
+import { generateDiagram } from '../core/generator';
+import { generateImage, ImageFormat } from '../core/imageGenerator';
 
 interface DiagramOptions {
   schema: string;
@@ -8,63 +10,41 @@ interface DiagramOptions {
 }
 
 export async function diagram(options: DiagramOptions) {
+  const format = (options.format as DiagramFormat) || 'mermaid';
+  const outputFormat = options.output?.split('.').pop() as ImageFormat || format as any;
+  
   console.log('Generating ER diagram...');
   console.log(`Schema: ${options.schema}`);
-  console.log(`Format: ${options.format || 'mermaid'}`);
+  console.log(`Format: ${format}`);
 
   const schema: Schema = JSON.parse(fs.readFileSync(options.schema, 'utf-8'));
 
-  // Generate Mermaid diagram
-  const mermaid = generateMermaid(schema);
+  // Check if output format is an image format
+  if (['png', 'svg', 'pdf'].includes(outputFormat)) {
+    // Generate Mermaid code for image rendering
+    const mermaidCode = generateDiagram(schema, 'mermaid');
+    
+    if (!options.output) {
+      console.error('Error: Output path required for image export');
+      process.exit(1);
+    }
+    
+    await generateImage({
+      mermaidCode,
+      outputPath: options.output,
+      format: outputFormat as ImageFormat,
+    });
+    
+    return;
+  }
+
+  // Generate diagram in text format
+  const output = generateDiagram(schema, format);
 
   if (options.output) {
-    fs.writeFileSync(options.output, mermaid);
+    fs.writeFileSync(options.output, output);
     console.log(`Diagram saved to ${options.output}`);
   } else {
-    console.log(mermaid);
+    console.log(output);
   }
-}
-
-function generateMermaid(schema: Schema): string {
-  let md = '# ER Diagram\n\n';
-  md += '```mermaid\n';
-  md += 'erDiagram\n';
-
-  // Add tables with columns
-  for (const table of schema.tables) {
-    md += `  ${table.name} {\n`;
-    for (const column of table.columns) {
-      const type = column.type;
-      const modifiers: string[] = [];
-      
-      if (column.isPrimaryKey) modifiers.push('PK');
-      if (column.isForeignKey) modifiers.push('FK');
-      if (!column.nullable) modifiers.push('NOT NULL');
-      
-      const modifierStr = modifiers.length > 0 ? ` "${modifiers.join(', ')}"` : '';
-      md += `    ${type} ${column.name}${modifierStr}\n`;
-    }
-    md += '  }\n';
-  }
-
-  md += '\n';
-
-  // Add relationships
-  for (const table of schema.tables) {
-    for (const fk of table.foreignKeys) {
-      // Determine relationship type based on cardinality
-      // Simplified: assume many-to-one by default
-      md += `  ${fk.referencedTable} ||--o{ ${table.name} : "${fk.name}"\n`;
-    }
-  }
-
-  md += '```\n';
-  
-  // Add summary
-  md += `\n## Summary\n\n`;
-  md += `- **Database**: ${schema.database}\n`;
-  md += `- **Tables**: ${schema.tables.length}\n`;
-  md += `- **Generated**: ${schema.generatedAt}\n`;
-  
-  return md;
 }

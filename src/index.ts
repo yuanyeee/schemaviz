@@ -21,7 +21,7 @@ program
   .command('diagram')
   .description('Generate ER diagram from schema')
   .requiredOption('-s, --schema <path>', 'Schema file path (JSON)')
-  .option('-f, --format <format>', 'Output format (mermaid)', 'mermaid')
+  .option('-f, --format <format>', 'Output format (mermaid, plantuml)', 'mermaid')
   .option('-o, --output <path>', 'Output file path')
   .action(diagram);
 

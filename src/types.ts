@@ -56,6 +56,8 @@ export interface SchemaDiff {
 
 export type DatabaseType = 'postgresql' | 'mysql' | 'sqlite' | 'sqlserver';
 
+export type DiagramFormat = 'mermaid' | 'plantuml';
+
 export interface DatabaseConfig {
   type: DatabaseType;
   host?: string;

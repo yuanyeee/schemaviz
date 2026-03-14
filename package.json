@@ -26,7 +26,9 @@
     "mysql2": "^3.6.5",
     "sql.js": "^1.10.0",
     "mssql": "^10.0.1",
-    "yaml": "^2.3.4"
+    "yaml": "^2.3.4",
+    "mermaid": "^10.7.0",
+    "puppeteer": "^21.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
