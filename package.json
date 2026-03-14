@@ -1,0 +1,32 @@
+{
+  "name": "schemaviz",
+  "version": "0.1.0",
+  "description": "Database ER diagram generator and schema diff tool",
+  "main": "dist/index.js",
+  "bin": {
+    "schemaviz": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "database",
+    "schema",
+    "er-diagram",
+    "diff",
+    "mermaid"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "prisma": "^5.9.0",
+    "sqlglot": "^20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}
