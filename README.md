@@ -5,6 +5,23 @@ Database ER diagram generator and schema diff tool for developers.
 ![npm version](https://img.shields.io/npm/v/schemaviz)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
+## Quick Setup
+
+```bash
+# 1. Clone
+git clone https://github.com/yuanyeee/schemaviz.git
+cd schemaviz
+
+# 2. Install & Build
+npm install
+npm run build
+
+# 3. Use CLI
+./dist/index.js extract -c examples/postgresql.yaml -o schema.json
+./dist/index.js diagram -s schema.json -o er.md
+./dist/index.js diff -s1 schema1.json -s2 schema2.json
+```
+
 ## Features
 
 - 📊 **Generate ER diagrams** from database schema
