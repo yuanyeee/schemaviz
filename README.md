@@ -30,6 +30,9 @@ npm run build
 - 🖼️ **Export to multiple formats**: Mermaid, PlantUML, PNG, SVG, PDF
 - 🗄️ **Support multiple databases**: PostgreSQL, MySQL, SQLite, SQL Server
 - ✅ **Validate schema** against best practices (missing PKs, FK indexes, email uniqueness, etc.)
+- 🌐 **Interactive Web UI** — pan/zoom ER diagram, table search & detail view in browser
+- ⚙️ **Code generation** — Prisma schema, TypeORM entities, GraphQL SDL from schema
+- 📚 **Schema history** — snapshot versioning with tag-based diff and rollback
 - 🤖 **GitHub Actions integration** for automatic schema review on PRs
 
 ## Installation
@@ -121,6 +124,60 @@ Validation rules:
 | `duplicate-index` | Warning | Multiple indexes on the same columns |
 | `missing-timestamps` | Info | No `created_at`/`updated_at` columns |
 
+### Interactive Web UI
+
+Open schema in browser with interactive ER diagram:
+
+```bash
+schemaviz serve -s schema.json
+# → opens http://localhost:3000
+
+schemaviz serve -s schema.json -p 8080 --watch
+```
+
+Features:
+- Pan/zoom with mouse wheel (Ctrl+scroll) or buttons
+- Table list sidebar with search (`Cmd/Ctrl+K`)
+- Click any table for column/index/FK detail panel
+- Copy Mermaid code or export SVG with one click
+- Dark/light theme toggle
+
+### Code Generation
+
+Generate ORM schema or GraphQL SDL from database schema:
+
+```bash
+# Prisma schema
+schemaviz generate -s schema.json -f prisma -o schema.prisma
+
+# TypeORM entity classes
+schemaviz generate -s schema.json -f typeorm -o ./entities
+
+# GraphQL SDL
+schemaviz generate -s schema.json -f graphql -o schema.graphql
+```
+
+### Schema History
+
+Save and compare schema snapshots over time:
+
+```bash
+# Save current schema as a snapshot
+schemaviz snapshot -s schema.json -t "v1.0-release"
+
+# List all snapshots
+schemaviz history list
+
+# Show a specific snapshot
+schemaviz history show v1.0-release
+
+# Compare snapshot to current schema
+schemaviz diff -s1 .schemaviz/snapshots/<id>.json -s2 schema.json
+
+# Delete a snapshot
+schemaviz history delete v1.0-release
+```
+
 ### GitHub Actions Integration
 
 Add schema diff and validation to your PR workflow by copying the provided workflows:
@@ -185,6 +242,12 @@ password: mypassword
 | `diagram` | Generate ER diagram from schema |
 | `diff` | Compare two schemas |
 | `validate` | Validate schema against best practices |
+| `serve` | Interactive ER diagram in browser |
+| `generate` | Generate Prisma / TypeORM / GraphQL code |
+| `snapshot` | Save a schema snapshot |
+| `history list` | List all snapshots |
+| `history show <ref>` | Show a snapshot |
+| `history delete <ref>` | Delete a snapshot |
 
 ### Diagram Output Formats
 
@@ -223,11 +286,20 @@ schemaviz/
 │   │   ├── extract.ts
 │   │   ├── diagram.ts
 │   │   ├── diff.ts
-│   │   └── validate.ts
+│   │   ├── validate.ts
+│   │   ├── serve.ts
+│   │   ├── generate.ts
+│   │   └── snapshot.ts
 │   ├── core/
 │   │   ├── generator.ts      # Diagram generators
 │   │   ├── imageGenerator.ts # Image export (PNG/SVG/PDF)
-│   │   └── validator.ts      # Schema validation rules
+│   │   ├── validator.ts      # Schema validation rules
+│   │   ├── webServer.ts      # Interactive Web UI server
+│   │   ├── history.ts        # Snapshot versioning
+│   │   └── codegen/
+│   │       ├── prisma.ts     # Prisma schema generator
+│   │       ├── typeorm.ts    # TypeORM entity generator
+│   │       └── graphql.ts    # GraphQL SDL generator
 │   └── adapters/          # Database adapters
 │       ├── base.ts
 │       ├── postgresql.ts
@@ -250,9 +322,11 @@ schemaviz/
 - [x] PNG/SVG/PDF export
 - [x] Schema validation (best practices linting)
 - [x] GitHub Actions for CI/CD (schema diff + validate on PRs)
+- [x] Interactive Web UI (schemaviz serve)
+- [x] Code generation: Prisma / TypeORM / GraphQL
+- [x] Schema history / snapshot versioning
 - [ ] VS Code extension
-- [ ] Interactive Web UI
-- [ ] AI-powered schema optimization suggestions
+- [ ] AI-powered schema optimization suggestions (Claude API)
 
 ## License
 
