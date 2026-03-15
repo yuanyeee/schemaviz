@@ -61,6 +61,13 @@ function generatePrismaModel(table: Table, schema: Schema): string {
 
   lines.push(`model ${modelName} {`);
 
+  // Pre-compute single-column unique index columns for @unique attribute
+  const singleUniqueColumns = new Set(
+    table.indexes
+      .filter(i => i.isUnique && i.columns.length === 1)
+      .map(i => i.columns[0]),
+  );
+
   // Find FK relations
   const fkColNames = new Set(table.foreignKeys.flatMap(fk => fk.columns));
 
@@ -73,11 +80,10 @@ function generatePrismaModel(table: Table, schema: Schema): string {
       ? ' @default(uuid())'
       : '';
     const pkAttr = col.isPrimaryKey ? ' @id' : '';
+    // Single-column unique indexes become @unique on the field (not @@unique)
+    const uniqueAttr = !col.isPrimaryKey && singleUniqueColumns.has(col.name) ? ' @unique' : '';
 
-    // Skip FK _id fields — they will get a relation field instead
-    const isExplicitFk = fkColNames.has(col.name) && !col.isPrimaryKey;
-
-    let fieldLine = `  ${toCamelCase(col.name)}  ${prismaType}${nullable}${pkAttr}${defaultAttr}`;
+    let fieldLine = `  ${toCamelCase(col.name)}  ${prismaType}${nullable}${pkAttr}${uniqueAttr}${defaultAttr}`;
 
     // Column mapping if name differs from camelCase
     if (toCamelCase(col.name) !== col.name) {
@@ -91,12 +97,10 @@ function generatePrismaModel(table: Table, schema: Schema): string {
   for (const fk of table.foreignKeys) {
     const refModelName = toPascalCase(toSingular(fk.referencedTable));
     const fieldName = toCamelCase(toSingular(fk.referencedTable));
-    const fkField = fk.columns.join(', ');
-    const refField = fk.referencedColumns.join(', ');
     lines.push(`  ${fieldName}  ${refModelName} @relation(fields: [${fk.columns.map(toCamelCase).join(', ')}], references: [${fk.referencedColumns.map(toCamelCase).join(', ')}])`);
   }
 
-  // Unique indexes
+  // Multi-column unique and non-unique indexes as model-level attributes
   for (const idx of table.indexes) {
     if (idx.isUnique && idx.columns.length > 1) {
       lines.push(`  @@unique([${idx.columns.map(toCamelCase).join(', ')}])`);

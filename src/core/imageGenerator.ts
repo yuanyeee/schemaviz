@@ -31,14 +31,8 @@ function getSvgContentFn(): string {
 
 export async function generateImage(options: ImageOptions): Promise<void> {
   const { mermaidCode, outputPath, format, backgroundColor = '#ffffff' } = options;
-  
-  // Extract Mermaid diagram code (remove the ```mermaid blocks)
-  const diagramCode = mermaidCode
-    .replace(/```mermaid\n/g, '')
-    .replace(/```\n/g, '')
-    .trim();
 
-  const html = generateHtml(diagramCode, backgroundColor);
+  const html = generateHtml(mermaidCode.trim(), backgroundColor);
   
   const b = await getBrowser();
   const page = await b.newPage();

@@ -73,11 +73,22 @@ describe('Prisma Schema Generator', () => {
     expect(result).toContain('@relation(');
   });
 
-  it('generates unique index constraints', () => {
+  it('generates @unique attribute for single-column unique indexes', () => {
     const result = generatePrismaSchema(schema);
-    // Single-column unique index becomes unique: true on the column
-    // (handled in column generation)
-    expect(result).toContain('email');
+    // users.email has a single-column unique index → must become @unique on the field
+    expect(result).toMatch(/email\s+String\s+@unique/);
+  });
+
+  it('does NOT generate @unique for non-unique columns', () => {
+    const result = generatePrismaSchema(schema);
+    // users.name has no unique index
+    expect(result).not.toMatch(/name\s+String\??\s+@unique/);
+  });
+
+  it('generates @@index for non-unique multi-column or FK indexes', () => {
+    // posts.user_id has a non-unique index → @@index
+    const result = generatePrismaSchema(schema);
+    expect(result).toContain('@@index([userId])');
   });
 
   it('includes database comment header', () => {

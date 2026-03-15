@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { Schema, DiagramFormat } from '../types';
-import { generateDiagram } from '../core/generator';
+import { generateDiagram, generateMermaidCode } from '../core/generator';
 import { generateImage, ImageFormat } from '../core/imageGenerator';
 
 interface DiagramOptions {
@@ -21,14 +21,18 @@ export async function diagram(options: DiagramOptions) {
 
   // Check if output format is an image format
   if (['png', 'svg', 'pdf'].includes(outputFormat)) {
-    // Generate Mermaid code for image rendering
-    const mermaidCode = generateDiagram(schema, 'mermaid');
-    
     if (!options.output) {
       console.error('Error: Output path required for image export');
       process.exit(1);
     }
-    
+
+    if (format !== 'mermaid') {
+      console.warn(`Warning: Image export only supports Mermaid rendering. Ignoring --format ${format}.`);
+    }
+
+    // Pass raw Mermaid ER code (no Markdown wrapper) to the image renderer
+    const mermaidCode = generateMermaidCode(schema);
+
     await generateImage({
       mermaidCode,
       outputPath: options.output,
