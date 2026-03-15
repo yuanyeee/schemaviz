@@ -2,7 +2,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Schema } from '../types';
-import { generateMermaid } from './generator';
+import { generateMermaidCode } from './generator';
 
 export interface ServeOptions {
   schema: string;
@@ -12,7 +12,7 @@ export interface ServeOptions {
 }
 
 export function buildHtml(schema: Schema): string {
-  const mermaidCode = generateMermaid(schema);
+  const mermaidCode = generateMermaidCode(schema);
   const schemaJson = JSON.stringify(schema, null, 2);
   const tableNames = schema.tables.map(t => t.name);
 

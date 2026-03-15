@@ -53,11 +53,15 @@ describe('buildHtml', () => {
     expect(html).toContain('"database": "test_db"');
   });
 
-  it('embeds mermaid diagram code', () => {
+  it('embeds raw mermaid ER diagram code (no markdown wrapper)', () => {
     const html = buildHtml(schema);
     expect(html).toContain('erDiagram');
     expect(html).toContain('users');
     expect(html).toContain('posts');
+    // Must NOT wrap in markdown code fences — mermaid.js needs raw code
+    const mermaidPre = html.match(/<pre class="mermaid">([\s\S]*?)<\/pre>/);
+    expect(mermaidPre).not.toBeNull();
+    expect(mermaidPre![1]).not.toContain('```');
   });
 
   it('includes mermaid.js CDN script', () => {

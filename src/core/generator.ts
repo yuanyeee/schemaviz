@@ -13,86 +13,99 @@ export function generateDiagram(schema: Schema, format: DiagramFormat): string {
   }
 }
 
-function generateMermaid(schema: Schema): string {
-  let md = '# ER Diagram\n\n';
-  md += '```mermaid\n';
-  md += 'erDiagram\n';
+/**
+ * Returns the raw Mermaid ER diagram code (no Markdown wrapper).
+ * Suitable for embedding in HTML or other contexts.
+ */
+export function generateMermaidCode(schema: Schema): string {
+  const lines: string[] = ['erDiagram'];
 
-  // Add tables with columns
   for (const table of schema.tables) {
-    md += `  ${table.name} {\n`;
+    lines.push(`  ${table.name} {`);
     for (const column of table.columns) {
-      const type = column.type;
       const modifiers: string[] = [];
-      
       if (column.isPrimaryKey) modifiers.push('PK');
       if (column.isForeignKey) modifiers.push('FK');
       if (!column.nullable) modifiers.push('NOT NULL');
-      
-      const modifierStr = modifiers.length > 0 ? ` "${modifiers.join(', ')}"` : '';
-      md += `    ${type} ${column.name}${modifierStr}\n`;
+      const mod = modifiers.length > 0 ? ` "${modifiers.join(', ')}"` : '';
+      lines.push(`    ${column.type} ${column.name}${mod}`);
     }
-    md += '  }\n';
+    lines.push('  }');
   }
 
-  md += '\n';
+  lines.push('');
 
-  // Add relationships
   for (const table of schema.tables) {
     for (const fk of table.foreignKeys) {
-      md += `  ${fk.referencedTable} ||--o{ ${table.name} : "${fk.name}"\n`;
+      lines.push(`  ${fk.referencedTable} ||--o{ ${table.name} : "${fk.name}"`);
     }
   }
 
-  md += '```\n';
-  
-  // Add summary
+  return lines.join('\n');
+}
+
+/**
+ * Returns Mermaid ER diagram wrapped in a Markdown code fence with a summary.
+ * Suitable for writing to .md files.
+ */
+export function generateMermaid(schema: Schema): string {
+  let md = '# ER Diagram\n\n';
+  md += '```mermaid\n';
+  md += generateMermaidCode(schema);
+  md += '\n```\n';
+
   md += `\n## Summary\n\n`;
   md += `- **Database**: ${schema.database}\n`;
   md += `- **Tables**: ${schema.tables.length}\n`;
   md += `- **Generated**: ${schema.generatedAt}\n`;
-  
+
   return md;
 }
 
-function generatePlantUML(schema: Schema): string {
-  let puml = '@startuml\n\n';
-  puml += '!theme plain\n\n';
-  
-  // Define tables
+/**
+ * Returns a PlantUML ER diagram using proper entity notation:
+ * - Primary keys with <<PK>> stereotype above the -- separator
+ * - Foreign keys with <<FK>> stereotype
+ * - NOT NULL indicated by * prefix on required fields
+ * - Crow's foot relationship notation
+ */
+export function generatePlantUML(schema: Schema): string {
+  const lines: string[] = ['@startuml', '', '!theme plain', 'hide empty methods', ''];
+
   for (const table of schema.tables) {
-    puml += `entity "${table.name}" as ${table.name} {\n`;
-    
-    // Primary key first
-    for (const column of table.columns) {
-      if (column.isPrimaryKey) {
-        const pk = 'PK';
-        const fk = column.isForeignKey ? ' FK' : '';
-        puml += `  ${column.name} : ${column.type} ${pk}${fk}\n`;
-      }
+    lines.push(`entity "${table.name}" as ${table.name} {`);
+
+    // Primary key section (above the -- separator)
+    const pkCols = table.columns.filter(c => c.isPrimaryKey);
+    for (const col of pkCols) {
+      const fkStereotype = col.isForeignKey ? ' <<FK>>' : '';
+      lines.push(`  *${col.name} : ${col.type} <<PK>>${fkStereotype}`);
     }
-    
-    // Other columns
-    for (const column of table.columns) {
-      if (!column.isPrimaryKey) {
-        const fk = column.isForeignKey ? ' FK' : '';
-        const nullable = column.nullable ? '?' : '';
-        puml += `  ${column.name} : ${column.type}${nullable}${fk}\n`;
-      }
+
+    // Separator between PKs and regular columns
+    lines.push('  --');
+
+    // Non-PK columns
+    const otherCols = table.columns.filter(c => !c.isPrimaryKey);
+    for (const col of otherCols) {
+      const required = col.nullable ? '' : '*';
+      const fkStereotype = col.isForeignKey ? ' <<FK>>' : '';
+      lines.push(`  ${required}${col.name} : ${col.type}${fkStereotype}`);
     }
-    
-    puml += '}\n\n';
+
+    lines.push('}');
+    lines.push('');
   }
-  
-  // Define relationships
+
+  // Relationships using Crow's foot notation
   for (const table of schema.tables) {
     for (const fk of table.foreignKeys) {
-      // PlantUML relationship syntax
-      puml += `${fk.referencedTable} ||--o{ ${table.name} : "${fk.name}"\n`;
+      lines.push(`${fk.referencedTable} ||--o{ ${table.name} : "${fk.name}"`);
     }
   }
-  
-  puml += '\n@enduml\n';
-  
-  return puml;
+
+  lines.push('');
+  lines.push('@enduml');
+
+  return lines.join('\n');
 }
