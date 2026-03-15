@@ -1,0 +1,196 @@
+name: Schema Diff
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '**.sql'
+      - '**/schema*.json'
+      - '**/migrations/**'
+
+jobs:
+  schema-diff:
+    name: Compare Schema Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install schemaviz
+        run: npm install -g schemaviz
+
+      - name: Extract schema from base branch
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git checkout origin/${{ github.base_ref }} -- schema.json 2>/dev/null || echo "No base schema found"
+          if [ -f schema.json ]; then
+            cp schema.json /tmp/schema-base.json
+          else
+            echo '{"database":"unknown","tables":[],"generatedAt":""}' > /tmp/schema-base.json
+          fi
+          git checkout HEAD -- schema.json 2>/dev/null || true
+
+      - name: Validate PR schema
+        id: validate
+        run: |
+          if [ -f schema.json ]; then
+            schemaviz validate --schema schema.json --format json --output /tmp/validation.json || true
+            echo "has_schema=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_schema=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate schema diff
+        id: diff
+        if: steps.validate.outputs.has_schema == 'true'
+        run: |
+          schemaviz diff \
+            --schema1 /tmp/schema-base.json \
+            --schema2 schema.json \
+            --output /tmp/diff.json \
+            --migration /tmp/migration.sql || true
+          echo "diff_generated=true" >> $GITHUB_OUTPUT
+
+      - name: Build PR comment
+        id: comment
+        if: steps.validate.outputs.has_schema == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let body = '## 🗄️ Schema Analysis\n\n';
+
+            // Validation section
+            if (fs.existsSync('/tmp/validation.json')) {
+              const validation = JSON.parse(fs.readFileSync('/tmp/validation.json', 'utf-8'));
+              const statusIcon = validation.passed ? '✅' : '❌';
+              body += `### ${statusIcon} Validation\n\n`;
+
+              if (validation.issues.length === 0) {
+                body += '✔ No issues found. Schema follows best practices.\n\n';
+              } else {
+                body += `| Level | Count |\n|-------|-------|\n`;
+                if (validation.errorCount > 0)   body += `| ✖ Error   | ${validation.errorCount} |\n`;
+                if (validation.warningCount > 0) body += `| ⚠ Warning | ${validation.warningCount} |\n`;
+                if (validation.infoCount > 0)    body += `| ℹ Info    | ${validation.infoCount} |\n`;
+                body += '\n';
+
+                const byTable = {};
+                for (const issue of validation.issues) {
+                  if (!byTable[issue.table]) byTable[issue.table] = [];
+                  byTable[issue.table].push(issue);
+                }
+
+                for (const [table, issues] of Object.entries(byTable)) {
+                  body += `<details>\n<summary><b>${table}</b> (${issues.length} issue(s))</summary>\n\n`;
+                  for (const issue of issues) {
+                    const icon = issue.level === 'error' ? '✖' : issue.level === 'warning' ? '⚠' : 'ℹ';
+                    body += `- ${icon} **[${issue.rule}]** ${issue.message}\n`;
+                    body += `  > 💡 ${issue.suggestion}\n\n`;
+                  }
+                  body += '</details>\n\n';
+                }
+              }
+            }
+
+            // Diff section
+            if (fs.existsSync('/tmp/diff.json')) {
+              const diff = JSON.parse(fs.readFileSync('/tmp/diff.json', 'utf-8'));
+              const totalChanges = diff.added.length + diff.removed.length + diff.modified.length;
+
+              body += `### 📊 Schema Changes\n\n`;
+
+              if (totalChanges === 0) {
+                body += 'No schema changes detected.\n\n';
+              } else {
+                if (diff.added.length > 0) {
+                  body += `**➕ Added Tables (${diff.added.length})**\n`;
+                  for (const t of diff.added) {
+                    body += `- \`${t.name}\` (${t.columns.length} columns)\n`;
+                  }
+                  body += '\n';
+                }
+                if (diff.removed.length > 0) {
+                  body += `**➖ Removed Tables (${diff.removed.length})**\n`;
+                  for (const t of diff.removed) {
+                    body += `- \`${t.name}\`\n`;
+                  }
+                  body += '\n';
+                }
+                if (diff.modified.length > 0) {
+                  body += `**✏️ Modified Tables (${diff.modified.length})**\n`;
+                  for (const mod of diff.modified) {
+                    const cols = mod.columns || [];
+                    body += `- \`${mod.name}\` (${cols.length} column change(s))\n`;
+                    for (const col of cols) {
+                      const colIcon = col.type === 'added' ? '➕' : col.type === 'removed' ? '➖' : '✏️';
+                      body += `  - ${colIcon} \`${col.name}\``;
+                      if (col.type === 'modified') {
+                        if (col.oldType !== col.newType) body += ` type: \`${col.oldType}\` → \`${col.newType}\``;
+                        if (col.oldNullable !== col.newNullable) body += ` nullable: \`${col.oldNullable}\` → \`${col.newNullable}\``;
+                      }
+                      body += '\n';
+                    }
+                  }
+                  body += '\n';
+                }
+              }
+            }
+
+            // Migration SQL
+            if (fs.existsSync('/tmp/migration.sql')) {
+              const sql = fs.readFileSync('/tmp/migration.sql', 'utf-8');
+              const lines = sql.split('\n').length;
+              body += `<details>\n<summary>📜 Migration SQL (${lines} lines)</summary>\n\n`;
+              body += '```sql\n' + sql + '\n```\n</details>\n\n';
+            }
+
+            body += `---\n*Generated by [schemaviz](https://github.com/schemaviz/schemaviz) • ${new Date().toISOString()}*`;
+
+            return body;
+
+      - name: Post comment to PR
+        if: steps.validate.outputs.has_schema == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = ${{ steps.comment.outputs.result }};
+            const marker = '<!-- schemaviz-report -->';
+
+            // Find existing comment to update
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: marker + '\n' + body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: marker + '\n' + body,
+              });
+            }

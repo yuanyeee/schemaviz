@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { extract } from './commands/extract';
 import { diagram } from './commands/diagram';
 import { diff } from './commands/diff';
+import { validate } from './commands/validate';
 
 const program = new Command();
 
@@ -33,5 +34,14 @@ program
   .option('-o, --output <path>', 'Output diff JSON file path')
   .option('-m, --migration <path>', 'Output migration SQL file path')
   .action(diff);
+
+program
+  .command('validate')
+  .description('Validate schema against best practices')
+  .requiredOption('-s, --schema <path>', 'Schema file path (JSON)')
+  .option('-o, --output <path>', 'Output report file path')
+  .option('-f, --format <format>', 'Output format (text, json)', 'text')
+  .option('--fail-on-warning', 'Exit with non-zero code if warnings are found', false)
+  .action(validate);
 
 program.parse();

@@ -1,0 +1,75 @@
+name: Schema Validate
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**/schema*.json'
+  pull_request:
+    paths:
+      - '**/schema*.json'
+  workflow_dispatch:
+    inputs:
+      schema_path:
+        description: 'Path to schema JSON file'
+        required: true
+        default: 'schema.json'
+      fail_on_warning:
+        description: 'Fail if warnings are found'
+        required: false
+        default: 'false'
+
+jobs:
+  validate:
+    name: Validate Schema Best Practices
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+      checks: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install schemaviz
+        run: npm install -g schemaviz
+
+      - name: Find schema files
+        id: find_schemas
+        run: |
+          SCHEMA_PATH="${{ github.event.inputs.schema_path || 'schema.json' }}"
+          if [ -f "$SCHEMA_PATH" ]; then
+            echo "schemas=$SCHEMA_PATH" >> $GITHUB_OUTPUT
+          else
+            # Find all schema JSON files in the repo
+            SCHEMAS=$(find . -name 'schema*.json' -not -path './node_modules/*' | tr '\n' ' ')
+            echo "schemas=$SCHEMAS" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate schemas
+        id: validate
+        run: |
+          FAIL_ON_WARNING="${{ github.event.inputs.fail_on_warning || 'false' }}"
+          EXIT_CODE=0
+
+          for SCHEMA in ${{ steps.find_schemas.outputs.schemas }}; do
+            echo "Validating: $SCHEMA"
+            WARN_FLAG=""
+            if [ "$FAIL_ON_WARNING" = "true" ]; then
+              WARN_FLAG="--fail-on-warning"
+            fi
+
+            schemaviz validate \
+              --schema "$SCHEMA" \
+              --format json \
+              --output "${SCHEMA%.json}-validation.json" \
+              $WARN_FLAG || EXIT_CODE=$?
+          done
+
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $EXIT_CODE

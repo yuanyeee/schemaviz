@@ -25,10 +25,12 @@ npm run build
 ## Features
 
 - 📊 **Generate ER diagrams** from database schema
-- 🔄 **Compare schemas** and show differences  
+- 🔄 **Compare schemas** and show differences
 - 📝 **Generate migration scripts** with rollback support
 - 🖼️ **Export to multiple formats**: Mermaid, PlantUML, PNG, SVG, PDF
 - 🗄️ **Support multiple databases**: PostgreSQL, MySQL, SQLite, SQL Server
+- ✅ **Validate schema** against best practices (missing PKs, FK indexes, email uniqueness, etc.)
+- 🤖 **GitHub Actions integration** for automatic schema review on PRs
 
 ## Installation
 
@@ -91,6 +93,48 @@ schemaviz diff -s1 schema1.json -s2 schema2.json
 schemaviz diff -s1 schema1.json -s2 schema2.json -m migration.sql
 ```
 
+### Validate Schema
+
+Validate schema against best practices:
+
+```bash
+# Validate and print report
+schemaviz validate -s schema.json
+
+# Output as JSON
+schemaviz validate -s schema.json --format json
+
+# Fail CI if warnings are found
+schemaviz validate -s schema.json --fail-on-warning
+```
+
+Validation rules:
+
+| Rule | Level | Description |
+|------|-------|-------------|
+| `no-primary-key` | Error | Table has no primary key |
+| `no-columns` | Error | Table has no columns |
+| `fk-missing-index` | Warning | Foreign key column has no index |
+| `email-not-unique` | Warning | `email` column has no unique index |
+| `id-column-missing-fk` | Warning | `*_id` column with no FK constraint |
+| `nullable-id-column` | Warning | ID column is nullable |
+| `duplicate-index` | Warning | Multiple indexes on the same columns |
+| `missing-timestamps` | Info | No `created_at`/`updated_at` columns |
+
+### GitHub Actions Integration
+
+Add schema diff and validation to your PR workflow by copying the provided workflows:
+
+```bash
+cp -r .github/workflows/schema-diff.yml your-repo/.github/workflows/
+cp -r .github/workflows/schema-validate.yml your-repo/.github/workflows/
+```
+
+When a PR modifies `schema.json`, the bot will automatically post a comment with:
+- Validation results (errors, warnings, improvement suggestions)
+- Schema diff (added/removed/modified tables and columns)
+- Migration SQL (expandable)
+
 ## Configuration
 
 ### PostgreSQL
@@ -140,6 +184,7 @@ password: mypassword
 | `extract` | Extract schema from database |
 | `diagram` | Generate ER diagram from schema |
 | `diff` | Compare two schemas |
+| `validate` | Validate schema against best practices |
 
 ### Diagram Output Formats
 
@@ -177,7 +222,12 @@ schemaviz/
 │   ├── commands/          # CLI commands
 │   │   ├── extract.ts
 │   │   ├── diagram.ts
-│   │   └── diff.ts
+│   │   ├── diff.ts
+│   │   └── validate.ts
+│   ├── core/
+│   │   ├── generator.ts      # Diagram generators
+│   │   ├── imageGenerator.ts # Image export (PNG/SVG/PDF)
+│   │   └── validator.ts      # Schema validation rules
 │   └── adapters/          # Database adapters
 │       ├── base.ts
 │       ├── postgresql.ts
@@ -198,8 +248,11 @@ schemaviz/
 - [x] Mermaid export
 - [x] PlantUML export
 - [x] PNG/SVG/PDF export
+- [x] Schema validation (best practices linting)
+- [x] GitHub Actions for CI/CD (schema diff + validate on PRs)
 - [ ] VS Code extension
-- [ ] GitHub Action for CI/CD
+- [ ] Interactive Web UI
+- [ ] AI-powered schema optimization suggestions
 
 ## License
 
