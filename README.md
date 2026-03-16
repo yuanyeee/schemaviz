@@ -126,21 +126,63 @@ Validation rules:
 
 ### Interactive Web UI
 
-Open schema in browser with interactive ER diagram:
+#### Web UI の起動手順
+
+**方法 1 — ログイン画面から接続する（推奨）**
 
 ```bash
-schemaviz serve -s schema.json
-# → opens http://localhost:3000
+# 1. ビルド（初回のみ）
+npm install
+npm run build
 
-schemaviz serve -s schema.json -p 8080 --watch
+# 2. サーバーを起動
+./dist/index.js serve
+# → http://localhost:3000 が自動で開きます
+
+# ポートを変えたい場合
+./dist/index.js serve -p 8080
 ```
 
-Features:
-- Pan/zoom with mouse wheel (Ctrl+scroll) or buttons
-- Table list sidebar with search (`Cmd/Ctrl+K`)
-- Click any table for column/index/FK detail panel
-- Copy Mermaid code or export SVG with one click
-- Dark/light theme toggle
+3. ブラウザに表示されるログイン画面でデータベースの接続情報を入力します。
+
+   | 項目 | 説明 |
+   |------|------|
+   | サーバーの種類 | PostgreSQL / MySQL / SQL Server / SQLite を選択 |
+   | サーバー名 | ホスト名または IP アドレス（例: `localhost`） |
+   | ポート | 自動入力されます（PostgreSQL=5432 など） |
+   | 認証 | ユーザー名とパスワードを入力 |
+   | データベース | 対象データベース名（省略可） |
+
+4. **「接続」** ボタンをクリックすると ER ダイアグラムが表示されます。
+5. ヘッダーの **「⏏ 切断」** ボタンでログイン画面に戻れます。
+
+**方法 2 — スキーマ JSON ファイルを直接指定する**
+
+```bash
+# スキーマを事前に抽出しておく
+./dist/index.js extract -c examples/postgresql.yaml -o schema.json
+
+# JSON ファイルを指定して起動（ログイン画面をスキップ）
+./dist/index.js serve -s schema.json
+# → http://localhost:3000 が自動で開きます
+
+# ファイルの変更を自動リロード
+./dist/index.js serve -s schema.json -p 8080 --watch
+```
+
+#### Web UI の機能
+
+- **ログイン画面** — SQL Server Management Studio 風の接続ダイアログ
+  - データベース種別の切り替え（PostgreSQL / MySQL / SQL Server / SQLite）
+  - 接続失敗時はエラーメッセージを表示
+  - ライト/ダーク テーマ切り替え
+- **ER ダイアグラム画面**
+  - マウスホイール（Ctrl+スクロール）またはボタンでズーム
+  - テーブル一覧サイドバー（検索: `Ctrl+K`）
+  - テーブルをクリックするとカラム / インデックス / FK の詳細パネルを表示
+  - Mermaid コードのコピー、SVG のダウンロード
+  - ダーク / ライト テーマ切り替え
+  - **「⏏ 切断」** ボタンでログイン画面に戻る
 
 ### Code Generation
 

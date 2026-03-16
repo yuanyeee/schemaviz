@@ -50,7 +50,7 @@ program
 program
   .command('serve')
   .description('Serve interactive ER diagram in browser')
-  .requiredOption('-s, --schema <path>', 'Schema file path (JSON)')
+  .option('-s, --schema <path>', 'Schema file path (JSON) — omit to use the login UI')
   .option('-p, --port <port>', 'Port to listen on', '3000')
   .option('-H, --host <host>', 'Host to bind to', 'localhost')
   .option('-w, --watch', 'Reload schema on every request', false)

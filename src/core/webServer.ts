@@ -3,18 +3,498 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Schema } from '../types';
 import { generateMermaidCode } from './generator';
+import { createAdapter } from '../adapters/base';
 
 export interface ServeOptions {
-  schema: string;
+  schema?: string;   // Optional — omit to show login page on startup
   port: number;
   host: string;
   watch: boolean;
 }
 
+// ─── Login Page ───────────────────────────────────────────────────────────────
+
+export function buildLoginHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SchemaViz — Connect to Server</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #252836;
+      --border: #2e3250;
+      --text: #e2e8f0;
+      --text-muted: #8892a4;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --error: #f87171;
+      --ok: #34d399;
+    }
+    [data-theme="light"] {
+      --bg: #e8ecf0;
+      --surface: #f5f7f9;
+      --surface2: #eaedf0;
+      --border: #c8cdd3;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --accent: #4f46e5;
+      --accent-hover: #6366f1;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Dialog card ── */
+    .dialog {
+      width: 460px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+      overflow: hidden;
+    }
+
+    /* Title bar */
+    .dialog-titlebar {
+      background: #2b3a6b;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      user-select: none;
+    }
+    .dialog-titlebar .app-icon { font-size: 1.3rem; }
+    .dialog-titlebar .app-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    .dialog-titlebar .theme-btn {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.65);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .dialog-titlebar .theme-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+    /* Section header */
+    .dialog-section-header {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .dialog-section-header .db-icon { font-size: 1.6rem; }
+    .dialog-section-header h2 { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+    .dialog-section-header p { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* Body */
+    .dialog-body { padding: 16px 20px 4px; }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 118px 1fr;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .form-row label {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-align: right;
+      padding-right: 6px;
+      white-space: nowrap;
+    }
+    .form-row input,
+    .form-row select {
+      padding: 5px 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--text);
+      font-size: 0.82rem;
+      width: 100%;
+      outline: none;
+    }
+    .form-row input:focus,
+    .form-row select:focus { border-color: var(--accent); }
+
+    .form-row .input-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .form-row .input-row input { flex: 1; }
+    .port-input { width: 70px !important; flex: none !important; }
+
+    .separator {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 10px 0 10px;
+    }
+
+    .show-pw-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .show-pw-label input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
+
+    /* Options accordion */
+    .options-toggle {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 0 4px 4px;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      user-select: none;
+    }
+    .options-toggle:hover { color: var(--text); }
+    .options-toggle .arrow { display: inline-block; transition: transform .15s; font-size: 0.65rem; }
+    .options-toggle.open .arrow { transform: rotate(90deg); }
+    .options-body { display: none; padding: 6px 0 0 20px; }
+    .options-body.open { display: block; }
+    .options-body .form-row { margin-bottom: 6px; }
+
+    /* Error box */
+    .error-box {
+      display: none;
+      background: rgba(248,113,113,0.08);
+      border: 1px solid rgba(248,113,113,0.35);
+      border-radius: 3px;
+      padding: 7px 10px;
+      margin: 8px 0 4px;
+      font-size: 0.78rem;
+      color: var(--error);
+      line-height: 1.4;
+    }
+    .error-box.show { display: flex; gap: 6px; align-items: flex-start; }
+    .error-box .err-icon { flex-shrink: 0; font-size: 0.95rem; }
+
+    /* Footer */
+    .dialog-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .btn {
+      padding: 5px 18px;
+      border-radius: 2px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      transition: background .12s;
+      min-width: 75px;
+    }
+    .btn:hover { background: var(--surface2); }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* Spinner inside button */
+    .spinner {
+      display: inline-block;
+      width: 11px; height: 11px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Footnote */
+    .footnote {
+      margin-top: 14px;
+      font-size: 0.73rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body data-theme="dark">
+
+<div class="dialog" id="dialog">
+
+  <!-- Title bar -->
+  <div class="dialog-titlebar">
+    <span class="app-icon">🗄</span>
+    <span class="app-name">SchemaViz</span>
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑</button>
+  </div>
+
+  <!-- Section header -->
+  <div class="dialog-section-header">
+    <span class="db-icon" id="dbIcon">🐘</span>
+    <div>
+      <h2>サーバーに接続</h2>
+      <p>Connect to Database Server</p>
+    </div>
+  </div>
+
+  <!-- Form body -->
+  <div class="dialog-body">
+
+    <div class="form-row">
+      <label for="dbType">サーバーの種類:</label>
+      <select id="dbType" onchange="onDbTypeChange()">
+        <option value="postgresql">PostgreSQL</option>
+        <option value="mysql">MySQL</option>
+        <option value="sqlserver">SQL Server</option>
+        <option value="sqlite">SQLite (ファイル)</option>
+      </select>
+    </div>
+
+    <!-- Host/Port row (hidden for SQLite) -->
+    <div class="form-row" id="hostRow">
+      <label for="host">サーバー名:</label>
+      <div class="input-row">
+        <input type="text" id="host" value="localhost" autocomplete="off" spellcheck="false">
+        <input type="number" id="port" class="port-input" value="5432" min="1" max="65535" title="Port">
+      </div>
+    </div>
+
+    <!-- SQLite file row (visible only for SQLite) -->
+    <div class="form-row" id="fileRow" style="display:none">
+      <label for="filename">データベースファイル:</label>
+      <input type="text" id="filename" placeholder="./myapp.db" autocomplete="off" spellcheck="false">
+    </div>
+
+    <hr class="separator">
+
+    <div class="form-row">
+      <label for="authType">認証:</label>
+      <select id="authType">
+        <option value="sql">データベース認証</option>
+      </select>
+    </div>
+
+    <!-- Credentials (hidden for SQLite) -->
+    <div id="credSection">
+      <div class="form-row">
+        <label for="user">ログイン:</label>
+        <input type="text" id="user" autocomplete="username" spellcheck="false">
+      </div>
+      <div class="form-row">
+        <label for="password">パスワード:</label>
+        <div class="input-row">
+          <input type="password" id="password" autocomplete="current-password">
+          <label class="show-pw-label" title="Show password">
+            <input type="checkbox" id="showPw" onchange="togglePw()"> 表示
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row" id="dbRow">
+      <label for="database">データベース:</label>
+      <input type="text" id="database" placeholder="(省略可)" autocomplete="off" spellcheck="false">
+    </div>
+
+    <hr class="separator">
+
+    <!-- Options accordion -->
+    <button class="options-toggle" id="optionsToggle" type="button" onclick="toggleOptions()">
+      <span class="arrow">▶</span> オプション
+    </button>
+    <div class="options-body" id="optionsBody">
+      <div class="form-row">
+        <label for="sslMode">SSL:</label>
+        <select id="sslMode">
+          <option value="">なし (None)</option>
+          <option value="require">必須 (Require)</option>
+          <option value="prefer">優先 (Prefer)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="timeout">接続タイムアウト:</label>
+        <input type="number" id="timeout" value="30" min="1" max="120" style="width:70px">
+      </div>
+    </div>
+
+    <!-- Error message -->
+    <div class="error-box" id="errorBox">
+      <span class="err-icon">⚠</span>
+      <span id="errorMsg"></span>
+    </div>
+
+  </div><!-- /dialog-body -->
+
+  <!-- Footer buttons -->
+  <div class="dialog-footer">
+    <button class="btn" type="button" onclick="resetForm()">リセット</button>
+    <button class="btn primary" type="button" id="connectBtn" onclick="doConnect()">接続</button>
+  </div>
+
+</div><!-- /dialog -->
+
+<p class="footnote">SchemaViz — Database Schema Visualizer</p>
+
+<script>
+  const DEFAULT_PORTS = { postgresql: 5432, mysql: 3306, sqlserver: 1433 };
+  const DB_ICONS      = { postgresql: '🐘', mysql: '🐬', sqlserver: '🪟', sqlite: '📁' };
+
+  function onDbTypeChange() {
+    const type = document.getElementById('dbType').value;
+    const isSqlite = type === 'sqlite';
+
+    document.getElementById('dbIcon').textContent    = DB_ICONS[type] || '🗄';
+    document.getElementById('hostRow').style.display = isSqlite ? 'none' : 'grid';
+    document.getElementById('fileRow').style.display = isSqlite ? 'grid' : 'none';
+    document.getElementById('credSection').style.display = isSqlite ? 'none' : 'block';
+    document.getElementById('dbRow').style.display   = isSqlite ? 'none' : 'grid';
+
+    if (!isSqlite && DEFAULT_PORTS[type]) {
+      document.getElementById('port').value = DEFAULT_PORTS[type];
+    }
+  }
+
+  function togglePw() {
+    const pw = document.getElementById('password');
+    pw.type = document.getElementById('showPw').checked ? 'text' : 'password';
+  }
+
+  function toggleOptions() {
+    const btn  = document.getElementById('optionsToggle');
+    const body = document.getElementById('optionsBody');
+    btn.classList.toggle('open');
+    body.classList.toggle('open');
+  }
+
+  function showError(msg) {
+    const box = document.getElementById('errorBox');
+    document.getElementById('errorMsg').textContent = msg;
+    box.classList.add('show');
+  }
+  function hideError() {
+    document.getElementById('errorBox').classList.remove('show');
+  }
+
+  function resetForm() {
+    document.getElementById('host').value     = 'localhost';
+    document.getElementById('port').value     = DEFAULT_PORTS[document.getElementById('dbType').value] || 5432;
+    document.getElementById('user').value     = '';
+    document.getElementById('password').value = '';
+    document.getElementById('database').value = '';
+    document.getElementById('filename').value = '';
+    hideError();
+  }
+
+  async function doConnect() {
+    hideError();
+    const btn  = document.getElementById('connectBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>接続中…';
+
+    const type = document.getElementById('dbType').value;
+    const config = { type };
+
+    if (type === 'sqlite') {
+      const fn = document.getElementById('filename').value.trim();
+      if (!fn) { showError('データベースファイルパスを入力してください。'); resetBtn(); return; }
+      config.filename = fn;
+    } else {
+      const host = document.getElementById('host').value.trim();
+      const port = parseInt(document.getElementById('port').value, 10);
+      if (!host) { showError('サーバー名を入力してください。'); resetBtn(); return; }
+      config.host = host;
+      config.port = port;
+      const user = document.getElementById('user').value.trim();
+      const pass = document.getElementById('password').value;
+      if (user) config.user = user;
+      if (pass) config.password = pass;
+      const db = document.getElementById('database').value.trim();
+      if (db)   config.database = db;
+      const ssl = document.getElementById('sslMode').value;
+      if (ssl)  config.ssl = ssl;
+    }
+
+    const tout = parseInt(document.getElementById('timeout').value, 10);
+    if (!isNaN(tout)) config.connectionTimeout = tout * 1000;
+
+    try {
+      const res  = await fetch('/api/connect', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(config),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        window.location.href = '/';
+      } else {
+        showError(data.error || '接続に失敗しました。');
+        resetBtn();
+      }
+    } catch (err) {
+      showError('ネットワークエラー: ' + err.message);
+      resetBtn();
+    }
+
+    function resetBtn() {
+      btn.disabled = false;
+      btn.innerHTML = '接続';
+    }
+  }
+
+  function toggleTheme() {
+    const body = document.body;
+    body.dataset.theme = body.dataset.theme === 'dark' ? 'light' : 'dark';
+  }
+
+  // Allow Enter key to connect
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !document.getElementById('connectBtn').disabled) doConnect();
+  });
+</script>
+</body>
+</html>`;
+}
+
+// ─── Main Diagram Page ────────────────────────────────────────────────────────
+
 export function buildHtml(schema: Schema): string {
   const mermaidCode = generateMermaidCode(schema);
   const schemaJson = JSON.stringify(schema, null, 2);
-  const tableNames = schema.tables.map(t => t.name);
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -96,6 +576,7 @@ export function buildHtml(schema: Schema): string {
     .btn:hover { border-color: var(--accent); background: var(--surface); }
     .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn.danger:hover { border-color: var(--error); color: var(--error); }
 
     /* Layout */
     .layout {
@@ -315,13 +796,14 @@ export function buildHtml(schema: Schema): string {
   <button class="btn" onclick="copyMermaid()" title="Copy Mermaid code">⎘ Copy</button>
   <button class="btn" onclick="exportSvg()" title="Download SVG">↓ SVG</button>
   <button class="btn" onclick="toggleTheme()">◑ Theme</button>
+  <button class="btn danger" onclick="disconnect()" title="Disconnect and go to login">⏏ 切断</button>
 </header>
 
 <div class="layout">
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">Tables</div>
     <div class="search-wrap">
-      <input class="search-input" id="searchInput" placeholder="Filter tables..." oninput="filterTables(this.value)">
+      <input class="search-input" id="searchInput" placeholder="Filter tables... (Ctrl+K)" oninput="filterTables(this.value)">
     </div>
     <div class="table-list" id="tableList"></div>
     <div class="gen-at">Generated: ${schema.generatedAt}</div>
@@ -489,6 +971,12 @@ export function buildHtml(schema: Schema): string {
     toast('SVG downloaded!');
   }
 
+  // Disconnect
+  async function disconnect() {
+    await fetch('/api/disconnect');
+    window.location.href = '/';
+  }
+
   // Toast
   function toast(msg) {
     const el = document.getElementById('toast');
@@ -510,25 +998,69 @@ export function buildHtml(schema: Schema): string {
 </html>`;
 }
 
+// ─── HTTP Server ──────────────────────────────────────────────────────────────
+
 export async function startServer(options: ServeOptions): Promise<void> {
-  const loadSchema = (): Schema => {
-    return JSON.parse(fs.readFileSync(options.schema, 'utf-8'));
+  const loadSchemaFromFile = (): Schema => {
+    return JSON.parse(fs.readFileSync(options.schema!, 'utf-8'));
   };
 
-  let schema = loadSchema();
+  // Pre-load schema from file if provided
+  let schema: Schema | null = options.schema ? loadSchemaFromFile() : null;
 
   const server = http.createServer((req, res) => {
     const url = req.url ?? '/';
 
-    if (url === '/api/schema') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(loadSchema()));
+    // ── POST /api/connect — connect to DB and extract schema ─────────────────
+    if (url === '/api/connect' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const config = JSON.parse(body);
+          const adapter = createAdapter(config);
+          await adapter.connect();
+          schema = await adapter.extractSchema();
+          await adapter.disconnect();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, database: schema.database, tables: schema.tables.length }));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
       return;
     }
 
+    // ── GET /api/disconnect — clear current schema ───────────────────────────
+    if (url === '/api/disconnect') {
+      schema = null;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // ── GET /api/schema ──────────────────────────────────────────────────────
+    if (url === '/api/schema') {
+      if (!schema) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No schema loaded' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(schema));
+      return;
+    }
+
+    // ── GET /api/reload ──────────────────────────────────────────────────────
     if (url === '/api/reload') {
+      if (!options.schema) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No schema file configured' }));
+        return;
+      }
       try {
-        schema = loadSchema();
+        schema = loadSchemaFromFile();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (err) {
@@ -538,12 +1070,12 @@ export async function startServer(options: ServeOptions): Promise<void> {
       return;
     }
 
-    // Main page
+    // ── GET / — main page ────────────────────────────────────────────────────
     try {
-      if (options.watch) {
-        schema = loadSchema(); // Always reload in watch mode
+      if (options.watch && options.schema) {
+        schema = loadSchemaFromFile();
       }
-      const html = buildHtml(schema);
+      const html = schema ? buildHtml(schema) : buildLoginHtml();
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(html);
     } catch (err) {
@@ -559,7 +1091,11 @@ export async function startServer(options: ServeOptions): Promise<void> {
 
   const url = `http://${options.host}:${options.port}`;
   console.log(`SchemaViz server running at ${url}`);
-  console.log(`Schema: ${path.resolve(options.schema)}`);
+  if (options.schema) {
+    console.log(`Schema: ${path.resolve(options.schema)}`);
+  } else {
+    console.log('No schema file specified — login page will be shown.');
+  }
   if (options.watch) {
     console.log('Watch mode enabled — page reloads on every request');
   }
