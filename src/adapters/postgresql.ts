@@ -27,6 +27,28 @@ export class PostgreSQLAdapter extends BaseAdapter {
     }
   }
 
+  async getDatabases(): Promise<string[]> {
+    if (!this.pool) throw new Error('Not connected');
+    const result = await this.pool.query(`
+      SELECT datname FROM pg_database
+      WHERE datistemplate = false AND datname NOT IN ('postgres')
+      ORDER BY datname
+    `);
+    return result.rows.map((r: any) => r.datname);
+  }
+
+  async getTableNames(): Promise<string[]> {
+    if (!this.pool) throw new Error('Not connected');
+    const result = await this.pool.query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE'
+      ORDER BY table_name
+    `);
+    return result.rows.map((r: any) => r.table_name);
+  }
+
   async extractSchema(): Promise<Schema> {
     if (!this.pool) {
       throw new Error('Not connected to database');

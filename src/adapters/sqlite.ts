@@ -36,6 +36,17 @@ export class SQLiteAdapter extends BaseAdapter {
     }
   }
 
+  async getTableNames(): Promise<string[]> {
+    if (!this.db) throw new Error('Not connected');
+    const result = this.db.exec(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `);
+    if (result.length === 0) return [];
+    return result[0].values.map((row: any) => row[0]);
+  }
+
   async extractSchema(): Promise<Schema> {
     if (!this.db) {
       throw new Error('Not connected to database');

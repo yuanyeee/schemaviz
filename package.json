@@ -22,19 +22,19 @@
   "license": "MIT",
   "dependencies": {
     "commander": "^11.1.0",
-    "pg": "^8.11.3",
-    "mysql2": "^3.6.5",
-    "sql.js": "^1.10.0",
-    "mssql": "^10.0.1",
-    "yaml": "^2.3.4",
     "mermaid": "^10.7.0",
-    "puppeteer": "^24.15.0"
+    "mssql": "^10.0.1",
+    "mysql2": "^3.6.5",
+    "pg": "^8.11.3",
+    "puppeteer": "^24.15.0",
+    "sql.js": "^1.10.0",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
+    "@types/node": "^20.19.37",
     "@types/pg": "^8.10.9",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.0",
-    "vitest": "^1.2.0",
-    "ts-node": "^10.9.2"
+    "vitest": "^1.2.0"
   }
 }

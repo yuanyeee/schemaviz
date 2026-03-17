@@ -26,6 +26,28 @@ export class MySQLAdapter extends BaseAdapter {
     }
   }
 
+  async getDatabases(): Promise<string[]> {
+    if (!this.pool) throw new Error('Not connected');
+    const [rows] = await this.pool.query<RowDataPacket[]>(`
+      SELECT SCHEMA_NAME FROM information_schema.SCHEMATA
+      WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+      ORDER BY SCHEMA_NAME
+    `);
+    return rows.map((r: any) => r.SCHEMA_NAME);
+  }
+
+  async getTableNames(): Promise<string[]> {
+    if (!this.pool) throw new Error('Not connected');
+    const [rows] = await this.pool.query<RowDataPacket[]>(`
+      SELECT TABLE_NAME
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = ?
+        AND TABLE_TYPE = 'BASE TABLE'
+      ORDER BY TABLE_NAME
+    `, [this.config.database]);
+    return rows.map((r: any) => r.TABLE_NAME);
+  }
+
   async extractSchema(): Promise<Schema> {
     if (!this.pool) {
       throw new Error('Not connected to database');
