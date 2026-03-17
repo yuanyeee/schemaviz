@@ -1534,9 +1534,9 @@ export function buildHtml(schema: Schema): string {
     generateFormat = 'prisma';
     document.getElementById('fpBody').innerHTML =
       '<div class="format-tabs">' +
-      '<button class="fmt-tab active" onclick="setFmt(\'prisma\',this)">Prisma</button>' +
-      '<button class="fmt-tab" onclick="setFmt(\'typeorm\',this)">TypeORM</button>' +
-      '<button class="fmt-tab" onclick="setFmt(\'graphql\',this)">GraphQL</button>' +
+      '<button class="fmt-tab active" onclick="setFmt(\\'prisma\\',this)">Prisma</button>' +
+      '<button class="fmt-tab" onclick="setFmt(\\'typeorm\\',this)">TypeORM</button>' +
+      '<button class="fmt-tab" onclick="setFmt(\\'graphql\\',this)">GraphQL</button>' +
       '</div>' +
       '<button class="btn primary" style="margin:10px 0" onclick="runGenerate()">▶ Generate</button>' +
       '<div id="generateResults"></div>';
