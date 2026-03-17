@@ -2,7 +2,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Schema } from '../types';
-import { generateMermaidCode } from './generator';
+import { generateMermaidCode, generatePlantUML } from './generator';
 import { createAdapter } from '../adapters/base';
 import { validateSchema } from './validator';
 import { generatePrismaSchema } from './codegen/prisma';
@@ -892,6 +892,7 @@ export function buildTableSelectHtml(tables: string[], database: string): string
 
 export function buildHtml(schema: Schema): string {
   const mermaidCode = generateMermaidCode(schema);
+  const plantumlCode = generatePlantUML(schema);
   const schemaJson = JSON.stringify(schema, null, 2);
 
   return `<!DOCTYPE html>
@@ -1245,6 +1246,42 @@ export function buildHtml(schema: Schema): string {
     .diff-col.diff-modified { color: var(--warn); }
     .migration-details { margin-top: 12px; }
     .migration-details summary { cursor: pointer; font-size: .82rem; font-weight: 600; padding: 4px 0; }
+
+    /* Diagram format toggle */
+    .diagram-toggle {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-right: 4px;
+    }
+    .dt-btn {
+      padding: 4px 10px;
+      border: none;
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .dt-btn:not(:last-child) { border-right: 1px solid var(--border); }
+    .dt-btn:hover { color: var(--text); }
+    .dt-btn.active { background: var(--accent); color: #fff; }
+
+    /* PlantUML container */
+    #plantumlDiagram { display: none; }
+    #plantumlDiagram img { max-width: none; }
+    .plantuml-loading {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      padding: 40px;
+      text-align: center;
+    }
+    .plantuml-error {
+      color: var(--error);
+      font-size: 0.85rem;
+      padding: 20px;
+    }
   </style>
 </head>
 <body data-theme="dark">
@@ -1254,12 +1291,16 @@ export function buildHtml(schema: Schema): string {
   <span class="db-badge">${schema.database}</span>
   <span class="stats">${schema.tables.length} tables</span>
   <span class="spacer"></span>
+  <div class="diagram-toggle">
+    <button class="dt-btn active" id="dtMermaid" onclick="switchDiagram('mermaid')">Mermaid</button>
+    <button class="dt-btn" id="dtPlantUML" onclick="switchDiagram('plantuml')">PlantUML</button>
+  </div>
   <button class="btn" onclick="openPanel('validate')" title="Validate schema">✔ Validate</button>
   <button class="btn" onclick="openPanel('generate')" title="Generate code">⚙ Generate</button>
   <button class="btn" onclick="openPanel('snapshot')" title="Save / browse snapshots">📷 Snapshot</button>
   <button class="btn" onclick="openPanel('diff')" title="Compare schemas">⟺ Diff</button>
   <button class="btn" onclick="toggleSidebar()" title="Toggle table list">☰ Tables</button>
-  <button class="btn" onclick="copyMermaid()" title="Copy Mermaid code">⎘ Copy</button>
+  <button class="btn" onclick="copyDiagramCode()" title="Copy diagram code" id="copyBtn">⎘ Copy</button>
   <button class="btn" onclick="exportSvg()" title="Download SVG">↓ SVG</button>
   <button class="btn" onclick="toggleTheme()">◑ Theme</button>
   <button class="btn danger" onclick="disconnect()" title="Disconnect and go to login">⏏ 切断</button>
@@ -1279,6 +1320,9 @@ export function buildHtml(schema: Schema): string {
     <div class="canvas-inner" id="canvasInner">
       <div id="diagram">
         <pre class="mermaid">${mermaidCode}</pre>
+      </div>
+      <div id="plantumlDiagram">
+        <div class="plantuml-loading" id="plantumlLoading">PlantUML図を読み込み中…</div>
       </div>
     </div>
     <div class="zoom-controls">
@@ -1311,9 +1355,12 @@ export function buildHtml(schema: Schema): string {
 <script>
   const SCHEMA = ${schemaJson};
   const MERMAID_CODE = \`${mermaidCode.replace(/`/g, '\\`')}\`;
+  const PLANTUML_CODE = \`${plantumlCode.replace(/`/g, '\\`')}\`;
   const tableMap = new Map(SCHEMA.tables.map(t => [t.name, t]));
 
   let scale = 1;
+  let currentDiagramFormat = 'mermaid';
+  let plantumlLoaded = false;
 
   // Init Mermaid
   mermaid.initialize({
@@ -1428,21 +1475,144 @@ export function buildHtml(schema: Schema): string {
     mermaid.initialize({ startOnLoad: false, theme: isDark ? 'default' : 'dark' });
   }
 
-  // Copy Mermaid code
-  function copyMermaid() {
-    navigator.clipboard.writeText(MERMAID_CODE).then(() => toast('Mermaid code copied!'));
+  // ─── PlantUML rendering via public server ───
+  function plantumlEncode(text) {
+    // PlantUML uses a custom deflate+base64 encoding
+    // We use the ~h hex encoding for simplicity (works with the server)
+    // Actually, the simplest is to use the /svg/~1 (plain text) endpoint via POST
+    // But for <img> we need GET URL, so use the hex encoding approach
+    function encode64(data) {
+      var r = '';
+      for (var i = 0; i < data.length; i += 3) {
+        if (i + 2 === data.length) {
+          r += append3bytes(data[i], data[i + 1], 0);
+        } else if (i + 1 === data.length) {
+          r += append3bytes(data[i], 0, 0);
+        } else {
+          r += append3bytes(data[i], data[i + 1], data[i + 2]);
+        }
+      }
+      return r;
+    }
+    function append3bytes(b1, b2, b3) {
+      var c1 = b1 >> 2;
+      var c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
+      var c3 = ((b2 & 0xF) << 2) | (b3 >> 6);
+      var c4 = b3 & 0x3F;
+      var r = '';
+      r += encode6bit(c1 & 0x3F);
+      r += encode6bit(c2 & 0x3F);
+      r += encode6bit(c3 & 0x3F);
+      r += encode6bit(c4 & 0x3F);
+      return r;
+    }
+    function encode6bit(b) {
+      if (b < 10) return String.fromCharCode(48 + b);
+      b -= 10;
+      if (b < 26) return String.fromCharCode(65 + b);
+      b -= 26;
+      if (b < 26) return String.fromCharCode(97 + b);
+      b -= 26;
+      if (b === 0) return '-';
+      if (b === 1) return '_';
+      return '?';
+    }
+    // deflate then encode
+    var data = unescape(encodeURIComponent(text));
+    var deflated = pako.deflateRaw(data, { level: 9, to: 'array' });
+    return encode64(deflated);
+  }
+
+  function loadPlantUML() {
+    if (plantumlLoaded) return;
+    var container = document.getElementById('plantumlDiagram');
+    var loadingEl = document.getElementById('plantumlLoading');
+    loadingEl.textContent = 'PlantUML図を読み込み中…';
+
+    // Need pako for deflate
+    if (typeof pako === 'undefined') {
+      var script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js';
+      script.onload = function() { renderPlantUML(container, loadingEl); };
+      script.onerror = function() {
+        loadingEl.innerHTML = '<div class="plantuml-error">pako library の読み込みに失敗しました。</div>';
+      };
+      document.head.appendChild(script);
+    } else {
+      renderPlantUML(container, loadingEl);
+    }
+  }
+
+  function renderPlantUML(container, loadingEl) {
+    try {
+      var encoded = plantumlEncode(PLANTUML_CODE);
+      var url = 'https://www.plantuml.com/plantuml/svg/' + encoded;
+      var img = document.createElement('img');
+      img.alt = 'PlantUML ER Diagram';
+      img.onload = function() {
+        loadingEl.style.display = 'none';
+        plantumlLoaded = true;
+      };
+      img.onerror = function() {
+        loadingEl.innerHTML = '<div class="plantuml-error">PlantUML サーバーからの描画に失敗しました。</div>';
+      };
+      img.src = url;
+      container.appendChild(img);
+    } catch (e) {
+      loadingEl.innerHTML = '<div class="plantuml-error">PlantUML エンコードエラー: ' + e.message + '</div>';
+    }
+  }
+
+  function switchDiagram(format) {
+    currentDiagramFormat = format;
+    var mermaidEl = document.getElementById('diagram');
+    var plantumlEl = document.getElementById('plantumlDiagram');
+    var btnM = document.getElementById('dtMermaid');
+    var btnP = document.getElementById('dtPlantUML');
+
+    if (format === 'mermaid') {
+      mermaidEl.style.display = '';
+      plantumlEl.style.display = 'none';
+      btnM.classList.add('active');
+      btnP.classList.remove('active');
+    } else {
+      mermaidEl.style.display = 'none';
+      plantumlEl.style.display = '';
+      btnM.classList.remove('active');
+      btnP.classList.add('active');
+      loadPlantUML();
+    }
+    resetZoom();
+  }
+
+  // Copy diagram code (Mermaid or PlantUML)
+  function copyDiagramCode() {
+    var code = currentDiagramFormat === 'mermaid' ? MERMAID_CODE : PLANTUML_CODE;
+    var label = currentDiagramFormat === 'mermaid' ? 'Mermaid' : 'PlantUML';
+    navigator.clipboard.writeText(code).then(function() { toast(label + ' code copied!'); });
   }
 
   // Export SVG
   function exportSvg() {
-    const svg = document.querySelector('#diagram svg');
-    if (!svg) { toast('Diagram not ready'); return; }
-    const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = \`\${SCHEMA.database}-er.svg\`;
-    a.click();
-    toast('SVG downloaded!');
+    if (currentDiagramFormat === 'mermaid') {
+      var svg = document.querySelector('#diagram svg');
+      if (!svg) { toast('Diagram not ready'); return; }
+      var blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = \`\${SCHEMA.database}-er-mermaid.svg\`;
+      a.click();
+      toast('SVG downloaded!');
+    } else {
+      // For PlantUML, download the SVG from the server
+      var encoded = plantumlEncode(PLANTUML_CODE);
+      var a = document.createElement('a');
+      a.href = 'https://www.plantuml.com/plantuml/svg/' + encoded;
+      a.download = \`\${SCHEMA.database}-er-plantuml.svg\`;
+      a.target = '_blank';
+      a.click();
+      toast('PlantUML SVG opened!');
+    }
   }
 
   // Disconnect
