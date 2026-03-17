@@ -287,6 +287,7 @@ export function buildLoginHtml(): string {
         <option value="postgresql">PostgreSQL</option>
         <option value="mysql">MySQL</option>
         <option value="sqlserver">SQL Server</option>
+        <option value="sqlserver-express">SQL Server Express</option>
         <option value="sqlite">SQLite (ファイル)</option>
       </select>
     </div>
@@ -300,6 +301,12 @@ export function buildLoginHtml(): string {
       </div>
     </div>
 
+    <!-- Instance name row (SQL Server Express) -->
+    <div class="form-row" id="instanceRow" style="display:none">
+      <label for="instanceName">インスタンス名:</label>
+      <input type="text" id="instanceName" value="SQLEXPRESS" autocomplete="off" spellcheck="false" placeholder="SQLEXPRESS">
+    </div>
+
     <!-- SQLite file row (visible only for SQLite) -->
     <div class="form-row" id="fileRow" style="display:none">
       <label for="filename">データベースファイル:</label>
@@ -308,11 +315,18 @@ export function buildLoginHtml(): string {
 
     <hr class="separator">
 
-    <div class="form-row">
+    <div class="form-row" id="authRow">
       <label for="authType">認証:</label>
-      <select id="authType">
+      <select id="authType" onchange="onAuthTypeChange()">
         <option value="sql">データベース認証</option>
+        <option value="windows">Windows認証</option>
       </select>
+    </div>
+
+    <!-- Domain row (Windows Auth only) -->
+    <div class="form-row" id="domainRow" style="display:none">
+      <label for="domain">ドメイン:</label>
+      <input type="text" id="domain" placeholder="(省略可)" autocomplete="off" spellcheck="false">
     </div>
 
     <!-- Credentials (hidden for SQLite) -->
@@ -334,7 +348,16 @@ export function buildLoginHtml(): string {
 
     <div class="form-row" id="dbRow">
       <label for="database">データベース:</label>
-      <input type="text" id="database" placeholder="(省略可)" autocomplete="off" spellcheck="false">
+      <div class="input-row">
+        <input type="text" id="database" placeholder="(省略可 — 後で選択可)" autocomplete="off" spellcheck="false" style="flex:1">
+        <button class="btn" type="button" id="dbListBtn" style="display:none; padding:5px 8px; font-size:0.75rem" onclick="loadDatabases()">一覧</button>
+      </div>
+    </div>
+    <div class="form-row" id="dbSelectRow" style="display:none">
+      <label>DB選択:</label>
+      <select id="dbSelect" onchange="document.getElementById('database').value=this.value" style="width:100%">
+        <option value="">-- データベースを選択 --</option>
+      </select>
     </div>
 
     <hr class="separator">
@@ -377,22 +400,57 @@ export function buildLoginHtml(): string {
 <p class="footnote">SchemaViz — Database Schema Visualizer</p>
 
 <script>
-  const DEFAULT_PORTS = { postgresql: 5432, mysql: 3306, sqlserver: 1433 };
-  const DB_ICONS      = { postgresql: '🐘', mysql: '🐬', sqlserver: '🪟', sqlite: '📁' };
+  const DEFAULT_PORTS = { postgresql: 5432, mysql: 3306, sqlserver: 1433, 'sqlserver-express': 1433 };
+  const DB_ICONS      = { postgresql: '🐘', mysql: '🐬', sqlserver: '🪟', 'sqlserver-express': '🪟', sqlite: '📁' };
 
   function onDbTypeChange() {
     const type = document.getElementById('dbType').value;
     const isSqlite = type === 'sqlite';
+    const isSqlServerExpress = type === 'sqlserver-express';
+    const isSqlServer = type === 'sqlserver' || isSqlServerExpress;
 
     document.getElementById('dbIcon').textContent    = DB_ICONS[type] || '🗄';
     document.getElementById('hostRow').style.display = isSqlite ? 'none' : 'grid';
     document.getElementById('fileRow').style.display = isSqlite ? 'grid' : 'none';
     document.getElementById('credSection').style.display = isSqlite ? 'none' : 'block';
     document.getElementById('dbRow').style.display   = isSqlite ? 'none' : 'grid';
+    document.getElementById('instanceRow').style.display = isSqlServerExpress ? 'grid' : 'none';
+    document.getElementById('dbListBtn').style.display = isSqlite ? 'none' : 'inline-flex';
+    document.getElementById('dbSelectRow').style.display = 'none';
+
+    // Show Windows Auth option only for SQL Server
+    const authType = document.getElementById('authType');
+    const authRow = document.getElementById('authRow');
+    const winOpt = authType.querySelector('option[value="windows"]');
+    if (isSqlServer) {
+      if (!winOpt) {
+        const opt = document.createElement('option');
+        opt.value = 'windows';
+        opt.textContent = 'Windows認証';
+        authType.appendChild(opt);
+      }
+    } else {
+      if (winOpt) { winOpt.remove(); authType.value = 'sql'; }
+    }
+    authRow.style.display = isSqlite ? 'none' : 'grid';
+    onAuthTypeChange();
+
+    // Hide port for Express (uses named instance)
+    if (isSqlServerExpress) {
+      document.getElementById('port').style.display = 'none';
+    } else {
+      document.getElementById('port').style.display = '';
+    }
 
     if (!isSqlite && DEFAULT_PORTS[type]) {
       document.getElementById('port').value = DEFAULT_PORTS[type];
     }
+  }
+
+  function onAuthTypeChange() {
+    const auth = document.getElementById('authType').value;
+    const isWin = auth === 'windows';
+    document.getElementById('domainRow').style.display = isWin ? 'grid' : 'none';
   }
 
   function togglePw() {
@@ -423,28 +481,42 @@ export function buildLoginHtml(): string {
     document.getElementById('password').value = '';
     document.getElementById('database').value = '';
     document.getElementById('filename').value = '';
+    document.getElementById('instanceName').value = 'SQLEXPRESS';
+    document.getElementById('domain').value   = '';
+    document.getElementById('dbSelectRow').style.display = 'none';
     hideError();
   }
 
-  async function doConnect() {
-    hideError();
-    const btn  = document.getElementById('connectBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span>接続中…';
-
-    const type = document.getElementById('dbType').value;
+  function buildConfig() {
+    let type = document.getElementById('dbType').value;
+    const isSqlServerExpress = type === 'sqlserver-express';
+    if (isSqlServerExpress) type = 'sqlserver';
     const config = { type };
 
-    if (type === 'sqlite') {
+    if (document.getElementById('dbType').value === 'sqlite') {
       const fn = document.getElementById('filename').value.trim();
-      if (!fn) { showError('データベースファイルパスを入力してください。'); resetBtn(); return; }
+      if (!fn) { showError('データベースファイルパスを入力してください。'); return null; }
       config.filename = fn;
     } else {
       const host = document.getElementById('host').value.trim();
-      const port = parseInt(document.getElementById('port').value, 10);
-      if (!host) { showError('サーバー名を入力してください。'); resetBtn(); return; }
+      if (!host) { showError('サーバー名を入力してください。'); return null; }
       config.host = host;
-      config.port = port;
+
+      if (isSqlServerExpress) {
+        const inst = document.getElementById('instanceName').value.trim();
+        if (inst) config.instanceName = inst;
+      } else {
+        const port = parseInt(document.getElementById('port').value, 10);
+        config.port = port;
+      }
+
+      const authType = document.getElementById('authType').value;
+      if (authType === 'windows') {
+        config.authType = 'windows';
+        const domain = document.getElementById('domain').value.trim();
+        if (domain) config.domain = domain;
+      }
+
       const user = document.getElementById('user').value.trim();
       const pass = document.getElementById('password').value;
       if (user) config.user = user;
@@ -457,6 +529,51 @@ export function buildLoginHtml(): string {
 
     const tout = parseInt(document.getElementById('timeout').value, 10);
     if (!isNaN(tout)) config.connectionTimeout = tout * 1000;
+    return config;
+  }
+
+  async function loadDatabases() {
+    hideError();
+    const config = buildConfig();
+    if (!config) return;
+
+    const btn = document.getElementById('dbListBtn');
+    btn.disabled = true;
+    btn.textContent = '取得中…';
+
+    try {
+      const res = await fetch('/api/databases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      const data = await res.json();
+      if (data.error) { showError(data.error); btn.disabled = false; btn.textContent = '一覧'; return; }
+
+      const sel = document.getElementById('dbSelect');
+      sel.innerHTML = '<option value="">-- データベースを選択 --</option>';
+      (data.databases || []).forEach(function(name) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+      document.getElementById('dbSelectRow').style.display = 'grid';
+    } catch (err) {
+      showError('DB一覧の取得に失敗: ' + err.message);
+    }
+    btn.disabled = false;
+    btn.textContent = '一覧';
+  }
+
+  async function doConnect() {
+    hideError();
+    const btn  = document.getElementById('connectBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>接続中…';
+
+    const config = buildConfig();
+    if (!config) { resetBtn(); return; }
 
     try {
       const res  = await fetch('/api/connect', {
@@ -466,7 +583,8 @@ export function buildLoginHtml(): string {
       });
       const data = await res.json();
       if (data.ok) {
-        window.location.href = '/';
+        // Show table selection page instead of going directly to diagram
+        window.location.href = '/select-tables';
       } else {
         showError(data.error || '接続に失敗しました。');
         resetBtn();
@@ -491,6 +609,280 @@ export function buildLoginHtml(): string {
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !document.getElementById('connectBtn').disabled) doConnect();
   });
+</script>
+</body>
+</html>`;
+}
+
+// ─── Table Selection Page ─────────────────────────────────────────────────────
+
+export function buildTableSelectHtml(tables: string[], database: string): string {
+  const tableListJson = JSON.stringify(tables);
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SchemaViz — テーブル選択</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #252836;
+      --border: #2e3250;
+      --text: #e2e8f0;
+      --text-muted: #8892a4;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --error: #f87171;
+      --ok: #34d399;
+    }
+    [data-theme="light"] {
+      --bg: #e8ecf0;
+      --surface: #f5f7f9;
+      --surface2: #eaedf0;
+      --border: #c8cdd3;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --accent: #4f46e5;
+      --accent-hover: #6366f1;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .dialog {
+      width: 520px;
+      max-height: 80vh;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .dialog-titlebar {
+      background: #2b3a6b;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .dialog-titlebar .app-icon { font-size: 1.3rem; }
+    .dialog-titlebar .app-name { font-size: 0.95rem; font-weight: 600; color: #fff; }
+    .dialog-titlebar .theme-btn {
+      margin-left: auto;
+      background: none; border: none; color: rgba(255,255,255,0.65);
+      cursor: pointer; font-size: 1rem; padding: 2px 4px; border-radius: 3px;
+    }
+    .dialog-titlebar .theme-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+    .dialog-section-header {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .dialog-section-header .db-icon { font-size: 1.6rem; }
+    .dialog-section-header h2 { font-size: 0.9rem; font-weight: 600; }
+    .dialog-section-header p { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+    .toolbar {
+      padding: 10px 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .search-input {
+      flex: 1;
+      padding: 5px 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--text);
+      font-size: 0.82rem;
+      outline: none;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .link-btn {
+      background: none; border: none; color: var(--accent); cursor: pointer;
+      font-size: 0.78rem; padding: 2px 4px; white-space: nowrap;
+    }
+    .link-btn:hover { text-decoration: underline; }
+    .count-badge {
+      font-size: 0.75rem; color: var(--text-muted); white-space: nowrap;
+    }
+
+    .table-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 16px;
+      min-height: 120px;
+      max-height: 45vh;
+    }
+    .table-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background .1s;
+    }
+    .table-check:hover { background: var(--surface2); }
+    .table-check input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    .table-check.hidden { display: none; }
+
+    .dialog-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .btn {
+      padding: 5px 18px; border-radius: 2px; font-size: 0.82rem;
+      cursor: pointer; border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); transition: background .12s; min-width: 75px;
+    }
+    .btn:hover { background: var(--surface2); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .spinner {
+      display: inline-block; width: 11px; height: 11px;
+      border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+      border-radius: 50%; animation: spin .6s linear infinite;
+      vertical-align: middle; margin-right: 4px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .footnote { margin-top: 14px; font-size: 0.73rem; color: var(--text-muted); text-align: center; }
+  </style>
+</head>
+<body data-theme="dark">
+
+<div class="dialog">
+  <div class="dialog-titlebar">
+    <span class="app-icon">🗄</span>
+    <span class="app-name">SchemaViz — テーブル選択</span>
+    <button class="theme-btn" onclick="document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark'" title="Toggle theme">◑</button>
+  </div>
+
+  <div class="dialog-section-header">
+    <span class="db-icon">▦</span>
+    <div>
+      <h2>${database} — ER図に表示するテーブルを選択</h2>
+      <p>Select tables to include in the ER diagram</p>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input class="search-input" id="searchInput" placeholder="テーブル名で検索..." oninput="filterTables()">
+    <button class="link-btn" onclick="selectAll()">全選択</button>
+    <button class="link-btn" onclick="deselectAll()">全解除</button>
+    <span class="count-badge" id="countBadge">0 / ${tables.length}</span>
+  </div>
+
+  <div class="table-list" id="tableList"></div>
+
+  <div class="dialog-footer">
+    <button class="btn" onclick="window.location.href='/'">戻る</button>
+    <button class="btn primary" id="showBtn" onclick="showDiagram()">ER図を表示</button>
+  </div>
+</div>
+
+<p class="footnote">SchemaViz — Database Schema Visualizer</p>
+
+<script>
+  const ALL_TABLES = ${tableListJson};
+
+  function buildList() {
+    const list = document.getElementById('tableList');
+    list.innerHTML = '';
+    ALL_TABLES.forEach(function(name) {
+      const label = document.createElement('label');
+      label.className = 'table-check';
+      label.dataset.name = name.toLowerCase();
+      label.innerHTML = '<input type="checkbox" value="' + name + '" checked onchange="updateCount()"> ' + name;
+      list.appendChild(label);
+    });
+    updateCount();
+  }
+
+  function filterTables() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    document.querySelectorAll('.table-check').forEach(function(el) {
+      el.classList.toggle('hidden', !el.dataset.name.includes(q));
+    });
+  }
+
+  function selectAll() {
+    document.querySelectorAll('.table-check:not(.hidden) input').forEach(function(cb) { cb.checked = true; });
+    updateCount();
+  }
+
+  function deselectAll() {
+    document.querySelectorAll('.table-check:not(.hidden) input').forEach(function(cb) { cb.checked = false; });
+    updateCount();
+  }
+
+  function updateCount() {
+    const checked = document.querySelectorAll('.table-check input:checked').length;
+    document.getElementById('countBadge').textContent = checked + ' / ' + ALL_TABLES.length;
+    document.getElementById('showBtn').disabled = checked === 0;
+  }
+
+  async function showDiagram() {
+    const btn = document.getElementById('showBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>読み込み中…';
+
+    const selected = [];
+    document.querySelectorAll('.table-check input:checked').forEach(function(cb) {
+      selected.push(cb.value);
+    });
+
+    try {
+      const res = await fetch('/api/extract-tables', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tables: selected }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        window.location.href = '/diagram';
+      } else {
+        alert(data.error || 'エラーが発生しました。');
+        btn.disabled = false;
+        btn.innerHTML = 'ER図を表示';
+      }
+    } catch (err) {
+      alert('エラー: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = 'ER図を表示';
+    }
+  }
+
+  buildList();
 </script>
 </body>
 </html>`;
@@ -1295,11 +1687,36 @@ export async function startServer(options: ServeOptions): Promise<void> {
 
   // Pre-load schema from file if provided
   let schema: Schema | null = options.schema ? loadSchemaFromFile() : null;
+  // Keep adapter alive for table selection flow
+  let currentAdapter: any = null;
+  let currentConfig: any = null;
+  let availableTableNames: string[] = [];
 
   const server = http.createServer((req, res) => {
     const url = req.url ?? '/';
 
-    // ── POST /api/connect — connect to DB and extract schema ─────────────────
+    // ── POST /api/databases — list available databases ───────────────────────
+    if (url === '/api/databases' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const config = JSON.parse(body);
+          const adapter = createAdapter(config);
+          await adapter.connect();
+          const databases = await adapter.getDatabases();
+          await adapter.disconnect();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, databases }));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // ── POST /api/connect — connect to DB, keep adapter for table selection ──
     if (url === '/api/connect' && req.method === 'POST') {
       let body = '';
       req.on('data', chunk => { body += chunk; });
@@ -1308,8 +1725,40 @@ export async function startServer(options: ServeOptions): Promise<void> {
           const config = JSON.parse(body);
           const adapter = createAdapter(config);
           await adapter.connect();
-          schema = await adapter.extractSchema();
-          await adapter.disconnect();
+          // Get table names for selection
+          const tableNames = await adapter.getTableNames();
+          // Store adapter and table names for later use
+          if (currentAdapter) {
+            try { await currentAdapter.disconnect(); } catch {}
+          }
+          currentAdapter = adapter;
+          currentConfig = config;
+          availableTableNames = tableNames;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, database: config.database || '(default)', tables: tableNames.length }));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // ── POST /api/extract-tables — extract schema for selected tables ────────
+    if (url === '/api/extract-tables' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const { tables: selectedTables } = JSON.parse(body);
+          if (!currentAdapter) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Not connected. Please connect first.' }));
+            return;
+          }
+          schema = await currentAdapter.extractSchemaForTables(selectedTables);
+          await currentAdapter.disconnect();
+          currentAdapter = null;
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, database: schema.database, tables: schema.tables.length }));
         } catch (err) {
@@ -1323,6 +1772,12 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── GET /api/disconnect — clear current schema ───────────────────────────
     if (url === '/api/disconnect') {
       schema = null;
+      if (currentAdapter) {
+        currentAdapter.disconnect().catch(() => {});
+        currentAdapter = null;
+      }
+      currentConfig = null;
+      availableTableNames = [];
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
       return;
@@ -1491,14 +1946,63 @@ export async function startServer(options: ServeOptions): Promise<void> {
       return;
     }
 
+    // ── GET /select-tables — table selection page ──────────────────────────
+    if (url === '/select-tables') {
+      try {
+        if (availableTableNames.length > 0) {
+          const dbName = currentConfig?.database || '(database)';
+          const html = buildTableSelectHtml(availableTableNames, dbName);
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(html);
+        } else {
+          // No table list available, redirect to login
+          res.writeHead(302, { Location: '/' });
+          res.end();
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end(`Error: ${err}`);
+      }
+      return;
+    }
+
+    // ── GET /diagram — ER diagram page ───────────────────────────────────────
+    if (url === '/diagram') {
+      try {
+        if (schema) {
+          const html = buildHtml(schema);
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(html);
+        } else {
+          res.writeHead(302, { Location: '/' });
+          res.end();
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end(`Error: ${err}`);
+      }
+      return;
+    }
+
     // ── GET / — main page ────────────────────────────────────────────────────
     try {
       if (options.watch && options.schema) {
         schema = loadSchemaFromFile();
       }
-      const html = schema ? buildHtml(schema) : buildLoginHtml();
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(html);
+      if (options.schema && schema) {
+        // If schema loaded from file, show diagram directly (original flow)
+        const html = buildHtml(schema);
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } else if (schema) {
+        // If schema is from live connection, redirect to diagram
+        res.writeHead(302, { Location: '/diagram' });
+        res.end();
+      } else {
+        const html = buildLoginHtml();
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      }
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end(`Error: ${err}`);

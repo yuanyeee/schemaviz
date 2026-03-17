@@ -26,6 +26,34 @@ export abstract class BaseAdapter {
   abstract extractSchema(): Promise<Schema>;
 
   /**
+   * Get list of databases (for DB selection UI)
+   */
+  async getDatabases(): Promise<string[]> {
+    return [];
+  }
+
+  /**
+   * Get list of table names (for table selection UI)
+   */
+  async getTableNames(): Promise<string[]> {
+    const tables = await this.getTables();
+    return tables.map(t => t.name);
+  }
+
+  /**
+   * Extract schema for specific tables only
+   */
+  async extractSchemaForTables(tableNames: string[]): Promise<Schema> {
+    // Default: extract full schema and filter
+    const full = await this.extractSchema();
+    const nameSet = new Set(tableNames);
+    return {
+      ...full,
+      tables: full.tables.filter(t => nameSet.has(t.name)),
+    };
+  }
+
+  /**
    * Get all tables
    */
   protected abstract getTables(): Promise<Table[]>;

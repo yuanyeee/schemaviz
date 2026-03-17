@@ -8,20 +8,49 @@ export class SQLServerAdapter extends BaseAdapter {
   async connect(): Promise<void> {
     const config: mssql.config = {
       server: this.config.host || 'localhost',
-      port: this.config.port || 1433,
       database: this.config.database,
-      user: this.config.user,
-      password: this.config.password,
       options: {
         encrypt: false,
         trustServerCertificate: true,
       },
     };
 
+    // SQL Server Express uses named instances (e.g. localhost\SQLEXPRESS)
+    if (this.config.instanceName) {
+      config.options!.instanceName = this.config.instanceName;
+      // When using named instances, port should not be set (uses SQL Browser)
+    } else {
+      config.port = this.config.port || 1433;
+    }
+
+    // Windows Authentication vs SQL Authentication
+    if (this.config.authType === 'windows') {
+      // For Windows Auth, use domain/integrated authentication via NTLM
+      config.authentication = {
+        type: 'ntlm',
+        options: {
+          domain: this.config.domain || '',
+          userName: this.config.user || '',
+          password: this.config.password || '',
+        },
+      };
+    } else {
+      config.user = this.config.user;
+      config.password = this.config.password;
+    }
+
+    // Connection timeout
+    if (this.config.connectionTimeout) {
+      config.connectionTimeout = this.config.connectionTimeout;
+    }
+
     try {
       this.pool = await mssql.connect(config);
     } catch (err: any) {
-      throw new Error(`Failed to connect to ${this.config.host}:${this.config.port} - ${err.message}`);
+      const target = this.config.instanceName
+        ? `${this.config.host}\\${this.config.instanceName}`
+        : `${this.config.host}:${this.config.port || 1433}`;
+      throw new Error(`Failed to connect to ${target} - ${err.message}`);
     }
   }
 
@@ -30,6 +59,47 @@ export class SQLServerAdapter extends BaseAdapter {
       await this.pool.close();
       this.pool = null;
     }
+  }
+
+  async getDatabases(): Promise<string[]> {
+    if (!this.pool) throw new Error('Not connected');
+    const result = await this.pool.query(`
+      SELECT name FROM sys.databases
+      WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')
+        AND state_desc = 'ONLINE'
+      ORDER BY name
+    `);
+    return result.recordset.map((r: any) => r.name);
+  }
+
+  async getTableNames(): Promise<string[]> {
+    if (!this.pool) throw new Error('Not connected');
+    const result = await this.pool.query(`
+      SELECT TABLE_NAME
+      FROM information_schema.TABLES
+      WHERE TABLE_TYPE = 'BASE TABLE'
+        AND TABLE_SCHEMA = 'dbo'
+      ORDER BY TABLE_NAME
+    `);
+    return result.recordset.map((r: any) => r.TABLE_NAME);
+  }
+
+  async extractSchemaForTables(tableNames: string[]): Promise<Schema> {
+    if (!this.pool) throw new Error('Not connected');
+
+    const tables: Table[] = [];
+    for (const tableName of tableNames) {
+      const columns = await this.getColumns(tableName);
+      const indexes = await this.getIndexes(tableName);
+      const foreignKeys = await this.getForeignKeys(tableName);
+      tables.push({ name: tableName, columns, indexes, foreignKeys });
+    }
+
+    return {
+      database: this.config.database,
+      tables,
+      generatedAt: new Date().toISOString(),
+    };
   }
 
   async extractSchema(): Promise<Schema> {
