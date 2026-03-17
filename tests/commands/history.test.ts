@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { saveSnapshot, loadSnapshot, loadIndex, deleteSnapshot } from '../../src/core/history';
+import { saveSnapshot, saveSnapshotFromData, loadSnapshot, loadIndex, deleteSnapshot } from '../../src/core/history';
+import { Schema } from '../../src/types';
 
 function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'schemaviz-test-'));
@@ -122,5 +123,50 @@ describe('Schema History', () => {
   it('returns empty index when no history exists', () => {
     const index = loadIndex(tmpDir);
     expect(index.snapshots).toEqual([]);
+  });
+
+  // ── saveSnapshotFromData ──────────────────────────────────────────────────
+  describe('saveSnapshotFromData', () => {
+    const inMemorySchema: Schema = {
+      database: 'live_db',
+      generatedAt: new Date().toISOString(),
+      tables: [
+        {
+          name: 'sessions',
+          columns: [
+            { name: 'id', type: 'UUID', nullable: false, isPrimaryKey: true, isForeignKey: false },
+          ],
+          indexes: [],
+          foreignKeys: [],
+        },
+      ],
+    };
+
+    it('saves schema from memory without a file path', () => {
+      const snap = saveSnapshotFromData(tmpDir, inMemorySchema, 'live-v1');
+      expect(snap.id).toHaveLength(8);
+      expect(snap.tag).toBe('live-v1');
+      expect(snap.schema.database).toBe('live_db');
+    });
+
+    it('sets schemaFile to "<live>"', () => {
+      const snap = saveSnapshotFromData(tmpDir, inMemorySchema, 'live-v1');
+      expect(snap.schemaFile).toBe('<live>');
+    });
+
+    it('writes snapshot to disk and can be loaded back', () => {
+      const snap = saveSnapshotFromData(tmpDir, inMemorySchema, 'memory-snap');
+      const loaded = loadSnapshot(tmpDir, snap.id);
+      expect(loaded).not.toBeNull();
+      expect(loaded!.schema.tables[0].name).toBe('sessions');
+    });
+
+    it('appears in the history index', () => {
+      saveSnapshotFromData(tmpDir, inMemorySchema, 'idx-test');
+      const index = loadIndex(tmpDir);
+      expect(index.snapshots).toHaveLength(1);
+      expect(index.snapshots[0].tag).toBe('idx-test');
+      expect(index.snapshots[0].schemaFile).toBe('<live>');
+    });
   });
 });

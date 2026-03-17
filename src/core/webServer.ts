@@ -4,6 +4,12 @@ import * as path from 'path';
 import { Schema } from '../types';
 import { generateMermaidCode } from './generator';
 import { createAdapter } from '../adapters/base';
+import { validateSchema } from './validator';
+import { generatePrismaSchema } from './codegen/prisma';
+import { generateTypeOrmEntities } from './codegen/typeorm';
+import { generateGraphQLSchema } from './codegen/graphql';
+import { saveSnapshotFromData, loadIndex, loadSnapshot, deleteSnapshot } from './history';
+import { computeDiff, generateMigrationSQL } from './diff';
 
 export interface ServeOptions {
   schema?: string;   // Optional — omit to show login page on startup
@@ -783,6 +789,70 @@ export function buildHtml(schema: Schema): string {
       border-top: 1px solid var(--border);
       flex-shrink: 0;
     }
+
+    /* ─── Feature Panel ─── */
+    .feature-panel {
+      width: 420px; flex-shrink: 0;
+      background: var(--surface); border-left: 1px solid var(--border);
+      display: none; flex-direction: column; overflow: hidden;
+    }
+    .feature-panel.visible { display: flex; }
+    .fp-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    .fp-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+    .fp-body { flex: 1; overflow-y: auto; padding: 16px; }
+
+    /* Validate */
+    .validate-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .badge-error { padding: 2px 8px; border-radius: 4px; background: rgba(248,113,113,.15); color: var(--error); font-size: .8rem; font-weight: 600; }
+    .badge-warn  { padding: 2px 8px; border-radius: 4px; background: rgba(251,191,36,.15); color: var(--warn); font-size: .8rem; font-weight: 600; }
+    .badge-info  { padding: 2px 8px; border-radius: 4px; background: rgba(99,102,241,.15); color: var(--accent); font-size: .8rem; font-weight: 600; }
+    .validate-table-group { margin-bottom: 14px; }
+    .validate-table-name { font-weight: 600; font-size: .85rem; margin-bottom: 6px; }
+    .validate-issue { padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; background: var(--surface2); border-left: 3px solid var(--border); }
+    .validate-issue.level-error { border-left-color: var(--error); }
+    .validate-issue.level-warning { border-left-color: var(--warn); }
+    .validate-issue.level-info { border-left-color: var(--accent); }
+    .issue-level { font-size: .7rem; font-weight: 700; text-transform: uppercase; }
+    .issue-rule { font-size: .75rem; color: var(--text-muted); margin-left: 6px; }
+    .issue-message { font-size: .82rem; margin-top: 4px; }
+    .issue-suggestion { font-size: .78rem; color: var(--text-muted); margin-top: 3px; }
+
+    /* Generate */
+    .format-tabs { display: flex; gap: 4px; }
+    .fmt-tab { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-muted); cursor: pointer; font-size: .8rem; }
+    .fmt-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .code-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: .78rem; overflow-x: auto; white-space: pre; font-family: monospace; max-height: 350px; overflow-y: auto; margin: 0; }
+    .gen-file-header { display: flex; align-items: center; justify-content: space-between; font-size: .8rem; font-weight: 600; margin: 12px 0 4px; }
+
+    /* Snapshots */
+    .snap-save-row { display: flex; gap: 8px; }
+    .snap-row { display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+    .snap-tag { font-weight: 500; font-size: .85rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .snap-date { font-size: .75rem; color: var(--text-muted); white-space: nowrap; }
+
+    /* Diff */
+    .diff-form { display: flex; flex-direction: column; gap: 8px; }
+    .form-row { display: flex; align-items: center; gap: 8px; }
+    .form-label { font-size: .82rem; width: 40px; flex-shrink: 0; color: var(--text-muted); }
+    .diff-section { margin-bottom: 14px; }
+    .diff-section-title { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+    .diff-section-title.added { color: var(--ok); }
+    .diff-section-title.removed { color: var(--error); }
+    .diff-section-title.modified { color: var(--warn); }
+    .diff-table-chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .82rem; margin: 2px; }
+    .diff-table-chip.added { background: rgba(52,211,153,.1); color: var(--ok); }
+    .diff-table-chip.removed { background: rgba(248,113,113,.1); color: var(--error); }
+    .diff-modified-table { padding: 6px 10px; border-radius: 6px; background: var(--surface2); margin-bottom: 6px; }
+    .diff-table-name { font-weight: 600; font-size: .85rem; margin-bottom: 4px; color: var(--warn); }
+    .diff-col { font-size: .78rem; padding: 2px 0; font-family: monospace; }
+    .diff-col.diff-added { color: var(--ok); }
+    .diff-col.diff-removed { color: var(--error); }
+    .diff-col.diff-modified { color: var(--warn); }
+    .migration-details { margin-top: 12px; }
+    .migration-details summary { cursor: pointer; font-size: .82rem; font-weight: 600; padding: 4px 0; }
   </style>
 </head>
 <body data-theme="dark">
@@ -792,6 +862,10 @@ export function buildHtml(schema: Schema): string {
   <span class="db-badge">${schema.database}</span>
   <span class="stats">${schema.tables.length} tables</span>
   <span class="spacer"></span>
+  <button class="btn" onclick="openPanel('validate')" title="Validate schema">✔ Validate</button>
+  <button class="btn" onclick="openPanel('generate')" title="Generate code">⚙ Generate</button>
+  <button class="btn" onclick="openPanel('snapshot')" title="Save / browse snapshots">📷 Snapshot</button>
+  <button class="btn" onclick="openPanel('diff')" title="Compare schemas">⟺ Diff</button>
   <button class="btn" onclick="toggleSidebar()" title="Toggle table list">☰ Tables</button>
   <button class="btn" onclick="copyMermaid()" title="Copy Mermaid code">⎘ Copy</button>
   <button class="btn" onclick="exportSvg()" title="Download SVG">↓ SVG</button>
@@ -829,6 +903,14 @@ export function buildHtml(schema: Schema): string {
       <span class="close-btn" onclick="closeDetail()">✕</span>
     </div>
     <div class="detail-body" id="detailBody"></div>
+  </aside>
+
+  <aside class="feature-panel" id="featurePanel">
+    <div class="fp-header">
+      <span class="fp-title" id="fpTitle"></span>
+      <span class="close-btn" onclick="closeFeaturePanel()">✕</span>
+    </div>
+    <div class="fp-body" id="fpBody"></div>
   </aside>
 </div>
 
@@ -985,9 +1067,204 @@ export function buildHtml(schema: Schema): string {
     setTimeout(() => el.classList.remove('show'), 2500);
   }
 
+  // ─── Feature Panel ────────────────────────────────────────────────────────
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function copyCodeBlock(id) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => toast('Copied!'));
+  }
+
+  // Event delegation for dynamic data-* buttons
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-delete-snap]');
+    if (btn) doDeleteSnap(btn.dataset.deleteSnap);
+    const cbtn = e.target.closest('[data-copy-id]');
+    if (cbtn) copyCodeBlock(cbtn.dataset.copyId);
+  });
+
+  let currentPanelName = null;
+  function openPanel(name) {
+    currentPanelName = name;
+    document.getElementById('featurePanel').classList.add('visible');
+    const titles = { validate: '✔ Validate Schema', generate: '⚙ Generate Code', snapshot: '📷 Snapshots', diff: '⟺ Schema Diff' };
+    document.getElementById('fpTitle').textContent = titles[name];
+    renderPanelContent(name);
+  }
+  function closeFeaturePanel() {
+    document.getElementById('featurePanel').classList.remove('visible');
+    currentPanelName = null;
+  }
+  function renderPanelContent(name) {
+    if (name === 'validate') renderValidatePanel();
+    else if (name === 'generate') renderGeneratePanel();
+    else if (name === 'snapshot') renderSnapshotPanel().catch(function(e) { console.error(e); });
+    else if (name === 'diff') renderDiffPanel().catch(function(e) { console.error(e); });
+  }
+
+  // ── Validate ──
+  function renderValidatePanel() {
+    document.getElementById('fpBody').innerHTML =
+      '<button class="btn primary" onclick="runValidate()">▶ Run Validation</button>' +
+      '<div id="validateResults" style="margin-top:14px"></div>';
+  }
+  async function runValidate() {
+    const el = document.getElementById('validateResults');
+    el.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">Running...</span>';
+    const data = await fetch('/api/validate', { method: 'POST' }).then(r => r.json());
+    if (data.error) { el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(data.error) + '</div>'; return; }
+    if (data.issues.length === 0) { el.innerHTML = '<div style="color:var(--ok);padding:8px 0">✔ All checks passed!</div>'; return; }
+    let html = '<div class="validate-summary">';
+    if (data.errorCount) html += '<span class="badge-error">' + data.errorCount + ' Error' + (data.errorCount > 1 ? 's' : '') + '</span>';
+    if (data.warningCount) html += '<span class="badge-warn">' + data.warningCount + ' Warning' + (data.warningCount > 1 ? 's' : '') + '</span>';
+    if (data.infoCount) html += '<span class="badge-info">' + data.infoCount + ' Info</span>';
+    html += '</div>';
+    const byTable = {};
+    for (const issue of data.issues) { if (!byTable[issue.table]) byTable[issue.table] = []; byTable[issue.table].push(issue); }
+    for (const [table, issues] of Object.entries(byTable)) {
+      html += '<div class="validate-table-group"><div class="validate-table-name">▦ ' + escapeHtml(table) + '</div>';
+      for (const i of issues) {
+        html += '<div class="validate-issue level-' + i.level + '">';
+        html += '<div><span class="issue-level">' + i.level.toUpperCase() + '</span><span class="issue-rule">[' + escapeHtml(i.rule) + ']</span></div>';
+        html += '<div class="issue-message">' + escapeHtml(i.message) + '</div>';
+        html += '<div class="issue-suggestion">→ ' + escapeHtml(i.suggestion) + '</div></div>';
+      }
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  // ── Generate ──
+  let generateFormat = 'prisma';
+  function renderGeneratePanel() {
+    generateFormat = 'prisma';
+    document.getElementById('fpBody').innerHTML =
+      '<div class="format-tabs">' +
+      '<button class="fmt-tab active" onclick="setFmt(\'prisma\',this)">Prisma</button>' +
+      '<button class="fmt-tab" onclick="setFmt(\'typeorm\',this)">TypeORM</button>' +
+      '<button class="fmt-tab" onclick="setFmt(\'graphql\',this)">GraphQL</button>' +
+      '</div>' +
+      '<button class="btn primary" style="margin:10px 0" onclick="runGenerate()">▶ Generate</button>' +
+      '<div id="generateResults"></div>';
+  }
+  function setFmt(fmt, btn) {
+    generateFormat = fmt;
+    document.querySelectorAll('.fmt-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  async function runGenerate() {
+    const el = document.getElementById('generateResults');
+    el.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">Generating...</span>';
+    const data = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format: generateFormat }) }).then(r => r.json());
+    if (data.error) { el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(data.error) + '</div>'; return; }
+    let html = '';
+    data.files.forEach(function(file, idx) {
+      const bid = 'genCode' + idx;
+      html += '<div class="gen-file-header"><span>' + escapeHtml(file.name) + '</span><button class="btn" data-copy-id="' + bid + '">⎘ Copy</button></div>';
+      html += '<pre class="code-block" id="' + bid + '">' + escapeHtml(file.content) + '</pre>';
+    });
+    el.innerHTML = html;
+  }
+
+  // ── Snapshot ──
+  async function renderSnapshotPanel() {
+    document.getElementById('fpBody').innerHTML =
+      '<div class="snap-save-row">' +
+      '<input id="snapTagInput" class="search-input" placeholder="Tag (optional)" style="flex:1">' +
+      '<button class="btn primary" onclick="doSaveSnapshot()">Save</button>' +
+      '</div>' +
+      '<div class="section-label" style="margin-top:14px">Saved Snapshots</div>' +
+      '<div id="snapList"><span style="color:var(--text-muted);font-size:.85rem">Loading...</span></div>';
+    await refreshSnapList();
+  }
+  async function doSaveSnapshot() {
+    const tag = document.getElementById('snapTagInput').value.trim();
+    const data = await fetch('/api/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag: tag || undefined }) }).then(r => r.json());
+    if (data.error) { toast('Error: ' + data.error); return; }
+    document.getElementById('snapTagInput').value = '';
+    toast('Snapshot saved' + (data.tag ? ': ' + data.tag : ''));
+    await refreshSnapList();
+  }
+  async function refreshSnapList() {
+    const data = await fetch('/api/snapshots').then(r => r.json());
+    const el = document.getElementById('snapList');
+    if (!el) return;
+    const snaps = data.snapshots || [];
+    if (snaps.length === 0) { el.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem">No snapshots yet.</div>'; return; }
+    let html = '';
+    snaps.slice().reverse().forEach(function(s) {
+      html += '<div class="snap-row">';
+      html += '<div style="flex:1;min-width:0"><div class="snap-tag">' + escapeHtml(s.tag || s.id) + '</div>';
+      html += '<div class="snap-date">' + new Date(s.savedAt).toLocaleString() + '</div></div>';
+      html += '<button class="btn danger" data-delete-snap="' + escapeHtml(s.id) + '">✕</button></div>';
+    });
+    el.innerHTML = html;
+  }
+  async function doDeleteSnap(id) {
+    const data = await fetch('/api/snapshots/' + id, { method: 'DELETE' }).then(r => r.json());
+    if (data.ok) { toast('Snapshot deleted'); await refreshSnapList(); }
+    else toast('Failed to delete snapshot');
+  }
+
+  // ── Diff ──
+  async function renderDiffPanel() {
+    document.getElementById('fpBody').innerHTML = '<div id="diffPanelInner"><span style="color:var(--text-muted);font-size:.85rem">Loading snapshots...</span></div>';
+    const data = await fetch('/api/snapshots').then(r => r.json());
+    const snaps = (data.snapshots || []).slice().reverse();
+    let opts = '<option value="current">Current Schema</option>';
+    snaps.forEach(function(s) {
+      opts += '<option value="' + escapeHtml(s.id) + '">' + escapeHtml(s.tag || s.id) + ' (' + new Date(s.savedAt).toLocaleDateString() + ')</option>';
+    });
+    const inner = document.getElementById('diffPanelInner');
+    if (!inner) return;
+    inner.outerHTML =
+      '<div class="diff-form">' +
+      '<div class="form-row"><label class="form-label">From:</label><select id="diffFrom" class="search-input">' + opts + '</select></div>' +
+      '<div class="form-row"><label class="form-label">To:</label><select id="diffTo" class="search-input">' + opts + '</select></div>' +
+      '<button class="btn primary" style="margin-top:10px" onclick="runDiff()">▶ Compare</button>' +
+      '</div>' +
+      '<div id="diffResults" style="margin-top:14px"></div>';
+  }
+  async function runDiff() {
+    const from = document.getElementById('diffFrom').value;
+    const to = document.getElementById('diffTo').value;
+    const el = document.getElementById('diffResults');
+    el.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">Comparing...</span>';
+    const data = await fetch('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to }) }).then(r => r.json());
+    if (data.error) { el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(data.error) + '</div>'; return; }
+    const d = data.diff;
+    let html = '';
+    html += '<div class="diff-section"><div class="diff-section-title added">+ Added (' + d.added.length + ')</div>';
+    d.added.length ? d.added.forEach(function(t) { html += '<div class="diff-table-chip added">+ ' + escapeHtml(t.name) + '</div>'; })
+      : (html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>');
+    html += '</div>';
+    html += '<div class="diff-section"><div class="diff-section-title removed">− Removed (' + d.removed.length + ')</div>';
+    d.removed.length ? d.removed.forEach(function(t) { html += '<div class="diff-table-chip removed">− ' + escapeHtml(t.name) + '</div>'; })
+      : (html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>');
+    html += '</div>';
+    html += '<div class="diff-section"><div class="diff-section-title modified">~ Modified (' + d.modified.length + ')</div>';
+    d.modified.forEach(function(m) {
+      html += '<div class="diff-modified-table"><div class="diff-table-name">~ ' + escapeHtml(m.name) + '</div>';
+      (m.columns || []).forEach(function(c) {
+        const sym = c.type === 'added' ? '+' : c.type === 'removed' ? '−' : '~';
+        const extra = (c.oldType && c.newType) ? ' (' + escapeHtml(c.oldType) + ' → ' + escapeHtml(c.newType) + ')' : '';
+        html += '<div class="diff-col diff-' + c.type + '">' + sym + ' ' + escapeHtml(c.name) + extra + '</div>';
+      });
+      html += '</div>';
+    });
+    if (!d.modified.length) html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>';
+    html += '</div>';
+    html += '<details class="migration-details"><summary>Migration SQL</summary>';
+    html += '<button class="btn" style="margin:6px 0" data-copy-id="migrationSql">⎘ Copy SQL</button>';
+    html += '<pre class="code-block" id="migrationSql">' + escapeHtml(data.migration) + '</pre></details>';
+    el.innerHTML = html;
+  }
+
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeDetail();
+    if (e.key === 'Escape') { closeDetail(); closeFeaturePanel(); }
     if ((e.ctrlKey || e.metaKey) && e.key === '0') { e.preventDefault(); resetZoom(); }
     if ((e.ctrlKey || e.metaKey) && e.key === '=') { e.preventDefault(); zoom(1.2); }
     if ((e.ctrlKey || e.metaKey) && e.key === '-') { e.preventDefault(); zoom(1/1.2); }
@@ -1000,7 +1277,18 @@ export function buildHtml(schema: Schema): string {
 
 // ─── HTTP Server ──────────────────────────────────────────────────────────────
 
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
 export async function startServer(options: ServeOptions): Promise<void> {
+  const SNAP_BASE_DIR = process.cwd();
+
   const loadSchemaFromFile = (): Schema => {
     return JSON.parse(fs.readFileSync(options.schema!, 'utf-8'));
   };
@@ -1067,6 +1355,139 @@ export async function startServer(options: ServeOptions): Promise<void> {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: String(err) }));
       }
+      return;
+    }
+
+    // ── POST /api/validate ──────────────────────────────────────────────────
+    if (url === '/api/validate' && req.method === 'POST') {
+      if (!schema) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No schema loaded' }));
+        return;
+      }
+      try {
+        const result = validateSchema(schema);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+      return;
+    }
+
+    // ── POST /api/generate ──────────────────────────────────────────────────
+    if (url === '/api/generate' && req.method === 'POST') {
+      if (!schema) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No schema loaded' }));
+        return;
+      }
+      const currentSchema = schema;
+      readBody(req).then(body => {
+        try {
+          const { format } = JSON.parse(body || '{}');
+          let files: { name: string; content: string }[];
+          if (format === 'prisma') {
+            files = [{ name: 'schema.prisma', content: generatePrismaSchema(currentSchema) }];
+          } else if (format === 'typeorm') {
+            const map = generateTypeOrmEntities(currentSchema);
+            files = Array.from(map.entries()).map(([name, content]) => ({ name, content }));
+          } else if (format === 'graphql') {
+            files = [{ name: 'schema.graphql', content: generateGraphQLSchema(currentSchema) }];
+          } else {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: `Unknown format: ${format}` }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ format, files }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // ── POST /api/snapshots ─────────────────────────────────────────────────
+    if (url === '/api/snapshots' && req.method === 'POST') {
+      if (!schema) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No schema loaded' }));
+        return;
+      }
+      const currentSchema = schema;
+      readBody(req).then(body => {
+        try {
+          const { tag } = JSON.parse(body || '{}');
+          const snapshot = saveSnapshotFromData(SNAP_BASE_DIR, currentSchema, tag || new Date().toISOString().slice(0, 10));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ id: snapshot.id, tag: snapshot.tag, savedAt: snapshot.savedAt }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // ── GET /api/snapshots ──────────────────────────────────────────────────
+    if (url === '/api/snapshots' && req.method === 'GET') {
+      try {
+        const index = loadIndex(SNAP_BASE_DIR);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ snapshots: index.snapshots }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+      return;
+    }
+
+    // ── DELETE /api/snapshots/:id ───────────────────────────────────────────
+    if (url.startsWith('/api/snapshots/') && req.method === 'DELETE') {
+      const ref = url.slice('/api/snapshots/'.length);
+      try {
+        const ok = deleteSnapshot(SNAP_BASE_DIR, ref);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+      return;
+    }
+
+    // ── POST /api/diff ──────────────────────────────────────────────────────
+    if (url === '/api/diff' && req.method === 'POST') {
+      if (!schema) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No schema loaded' }));
+        return;
+      }
+      const currentSchema = schema;
+      readBody(req).then(body => {
+        try {
+          const { from, to } = JSON.parse(body);
+          const resolveRef = (ref: string): Schema | null => {
+            if (ref === 'current') return currentSchema;
+            const snap = loadSnapshot(SNAP_BASE_DIR, ref);
+            return snap ? snap.schema : null;
+          };
+          const s1 = resolveRef(from);
+          const s2 = resolveRef(to);
+          if (!s1) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: `Snapshot not found: ${from}` })); return; }
+          if (!s2) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: `Snapshot not found: ${to}` })); return; }
+          const diffResult = computeDiff(s1, s2);
+          const migration = generateMigrationSQL(s1.database, diffResult);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ diff: diffResult, migration }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
       return;
     }
 

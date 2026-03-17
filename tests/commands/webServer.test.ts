@@ -99,4 +99,42 @@ describe('buildHtml', () => {
     const html = buildHtml(schema);
     expect(html).toContain('2026-01-01T00:00:00.000Z');
   });
+
+  // ── Feature Panel UI ──────────────────────────────────────────────────────
+  it('includes feature panel header buttons', () => {
+    const html = buildHtml(schema);
+    expect(html).toContain("openPanel('validate')");
+    expect(html).toContain("openPanel('generate')");
+    expect(html).toContain("openPanel('snapshot')");
+    expect(html).toContain("openPanel('diff')");
+  });
+
+  it('includes feature panel HTML scaffold', () => {
+    const html = buildHtml(schema);
+    expect(html).toContain('id="featurePanel"');
+    expect(html).toContain('id="fpTitle"');
+    expect(html).toContain('id="fpBody"');
+    expect(html).toContain('closeFeaturePanel');
+  });
+
+  it('includes feature panel JavaScript functions', () => {
+    const html = buildHtml(schema);
+    expect(html).toContain('function openPanel');
+    expect(html).toContain('function closeFeaturePanel');
+    expect(html).toContain('function runValidate');
+    expect(html).toContain('function runGenerate');
+    expect(html).toContain('function renderSnapshotPanel');
+    expect(html).toContain('function runDiff');
+  });
+
+  it('includes escapeHtml utility function', () => {
+    const html = buildHtml(schema);
+    expect(html).toContain('function escapeHtml');
+  });
+
+  it('Escape key closes both detail panel and feature panel', () => {
+    const html = buildHtml(schema);
+    expect(html).toContain('closeDetail()');
+    expect(html).toContain('closeFeaturePanel()');
+  });
 });

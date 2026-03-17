@@ -87,6 +87,29 @@ export function saveSnapshot(
   return snapshot;
 }
 
+export function saveSnapshotFromData(baseDir: string, schema: Schema, tag: string): Snapshot {
+  ensureDirs(baseDir);
+
+  const id = generateId();
+  const savedAt = new Date().toISOString();
+
+  const snapshot: Snapshot = {
+    id,
+    tag,
+    savedAt,
+    schemaFile: '<live>',
+    schema,
+  };
+
+  fs.writeFileSync(snapshotPath(baseDir, id), JSON.stringify(snapshot, null, 2), 'utf-8');
+
+  const index = loadIndex(baseDir);
+  index.snapshots.push({ id, tag, savedAt, schemaFile: '<live>' });
+  saveIndex(baseDir, index);
+
+  return snapshot;
+}
+
 export function loadSnapshot(baseDir: string, idOrTag: string): Snapshot | null {
   const index = loadIndex(baseDir);
 
