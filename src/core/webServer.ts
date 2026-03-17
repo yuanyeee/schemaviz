@@ -544,7 +544,7 @@ export function buildLoginHtml(): string {
     try {
       const res = await fetch('/api/databases', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(config),
       });
       const data = await res.json();
@@ -578,7 +578,7 @@ export function buildLoginHtml(): string {
     try {
       const res  = await fetch('/api/connect', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body:    JSON.stringify(config),
       });
       const data = await res.json();
@@ -864,7 +864,7 @@ export function buildTableSelectHtml(tables: string[], database: string): string
     try {
       const res = await fetch('/api/extract-tables', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({ tables: selected }),
       });
       const data = await res.json();
@@ -1549,7 +1549,7 @@ export function buildHtml(schema: Schema): string {
   async function runGenerate() {
     const el = document.getElementById('generateResults');
     el.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">Generating...</span>';
-    const data = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format: generateFormat }) }).then(r => r.json());
+    const data = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify({ format: generateFormat }) }).then(r => r.json());
     if (data.error) { el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(data.error) + '</div>'; return; }
     let html = '';
     data.files.forEach(function(file, idx) {
@@ -1573,7 +1573,7 @@ export function buildHtml(schema: Schema): string {
   }
   async function doSaveSnapshot() {
     const tag = document.getElementById('snapTagInput').value.trim();
-    const data = await fetch('/api/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag: tag || undefined }) }).then(r => r.json());
+    const data = await fetch('/api/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify({ tag: tag || undefined }) }).then(r => r.json());
     if (data.error) { toast('Error: ' + data.error); return; }
     document.getElementById('snapTagInput').value = '';
     toast('Snapshot saved' + (data.tag ? ': ' + data.tag : ''));
@@ -1624,7 +1624,7 @@ export function buildHtml(schema: Schema): string {
     const to = document.getElementById('diffTo').value;
     const el = document.getElementById('diffResults');
     el.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">Comparing...</span>';
-    const data = await fetch('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to }) }).then(r => r.json());
+    const data = await fetch('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify({ from, to }) }).then(r => r.json());
     if (data.error) { el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(data.error) + '</div>'; return; }
     const d = data.diff;
     let html = '';
@@ -1706,11 +1706,11 @@ export async function startServer(options: ServeOptions): Promise<void> {
           await adapter.connect();
           const databases = await adapter.getDatabases();
           await adapter.disconnect();
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, databases }));
         } catch (err) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: String(err) }));
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
         }
       });
       return;
@@ -1734,11 +1734,11 @@ export async function startServer(options: ServeOptions): Promise<void> {
           currentAdapter = adapter;
           currentConfig = config;
           availableTableNames = tableNames;
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, database: config.database || '(default)', tables: tableNames.length }));
         } catch (err) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: String(err) }));
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
         }
       });
       return;
@@ -1752,18 +1752,18 @@ export async function startServer(options: ServeOptions): Promise<void> {
         try {
           const { tables: selectedTables } = JSON.parse(body);
           if (!currentAdapter) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ error: 'Not connected. Please connect first.' }));
             return;
           }
           schema = await currentAdapter.extractSchemaForTables(selectedTables);
           await currentAdapter.disconnect();
           currentAdapter = null;
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, database: schema.database, tables: schema.tables.length }));
         } catch (err) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: String(err) }));
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
         }
       });
       return;
@@ -1778,7 +1778,7 @@ export async function startServer(options: ServeOptions): Promise<void> {
       }
       currentConfig = null;
       availableTableNames = [];
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: true }));
       return;
     }
@@ -1786,11 +1786,11 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── GET /api/schema ──────────────────────────────────────────────────────
     if (url === '/api/schema') {
       if (!schema) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'No schema loaded' }));
         return;
       }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(schema));
       return;
     }
@@ -1798,17 +1798,17 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── GET /api/reload ──────────────────────────────────────────────────────
     if (url === '/api/reload') {
       if (!options.schema) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'No schema file configured' }));
         return;
       }
       try {
         schema = loadSchemaFromFile();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true }));
       } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err) }));
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
       }
       return;
     }
@@ -1816,17 +1816,17 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── POST /api/validate ──────────────────────────────────────────────────
     if (url === '/api/validate' && req.method === 'POST') {
       if (!schema) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'No schema loaded' }));
         return;
       }
       try {
         const result = validateSchema(schema);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(result));
       } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err) }));
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
       }
       return;
     }
@@ -1834,7 +1834,7 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── POST /api/generate ──────────────────────────────────────────────────
     if (url === '/api/generate' && req.method === 'POST') {
       if (!schema) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'No schema loaded' }));
         return;
       }
@@ -1851,15 +1851,15 @@ export async function startServer(options: ServeOptions): Promise<void> {
           } else if (format === 'graphql') {
             files = [{ name: 'schema.graphql', content: generateGraphQLSchema(currentSchema) }];
           } else {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ error: `Unknown format: ${format}` }));
             return;
           }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ format, files }));
         } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: String(err) }));
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
         }
       });
       return;
@@ -1868,7 +1868,7 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── POST /api/snapshots ─────────────────────────────────────────────────
     if (url === '/api/snapshots' && req.method === 'POST') {
       if (!schema) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'No schema loaded' }));
         return;
       }
@@ -1877,11 +1877,11 @@ export async function startServer(options: ServeOptions): Promise<void> {
         try {
           const { tag } = JSON.parse(body || '{}');
           const snapshot = saveSnapshotFromData(SNAP_BASE_DIR, currentSchema, tag || new Date().toISOString().slice(0, 10));
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ id: snapshot.id, tag: snapshot.tag, savedAt: snapshot.savedAt }));
         } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: String(err) }));
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
         }
       });
       return;
@@ -1891,11 +1891,11 @@ export async function startServer(options: ServeOptions): Promise<void> {
     if (url === '/api/snapshots' && req.method === 'GET') {
       try {
         const index = loadIndex(SNAP_BASE_DIR);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ snapshots: index.snapshots }));
       } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err) }));
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
       }
       return;
     }
@@ -1905,11 +1905,11 @@ export async function startServer(options: ServeOptions): Promise<void> {
       const ref = url.slice('/api/snapshots/'.length);
       try {
         const ok = deleteSnapshot(SNAP_BASE_DIR, ref);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok }));
       } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err) }));
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
       }
       return;
     }
@@ -1917,7 +1917,7 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── POST /api/diff ──────────────────────────────────────────────────────
     if (url === '/api/diff' && req.method === 'POST') {
       if (!schema) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'No schema loaded' }));
         return;
       }
@@ -1932,15 +1932,15 @@ export async function startServer(options: ServeOptions): Promise<void> {
           };
           const s1 = resolveRef(from);
           const s2 = resolveRef(to);
-          if (!s1) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: `Snapshot not found: ${from}` })); return; }
-          if (!s2) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: `Snapshot not found: ${to}` })); return; }
+          if (!s1) { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: `Snapshot not found: ${from}` })); return; }
+          if (!s2) { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: `Snapshot not found: ${to}` })); return; }
           const diffResult = computeDiff(s1, s2);
           const migration = generateMigrationSQL(s1.database, diffResult);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ diff: diffResult, migration }));
         } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: String(err) }));
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
         }
       });
       return;
