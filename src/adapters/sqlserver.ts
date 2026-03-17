@@ -78,7 +78,9 @@ export class SQLServerAdapter extends BaseAdapter {
   protected async getColumns(tableName: string): Promise<Column[]> {
     if (!this.pool) throw new Error('Not connected');
 
-    const result = await this.pool.query(`
+    const result = await this.pool.request()
+      .input('tableName', mssql.NVarChar, tableName)
+      .query(`
       SELECT 
         c.COLUMN_NAME,
         c.DATA_TYPE,
@@ -101,10 +103,12 @@ export class SQLServerAdapter extends BaseAdapter {
       WHERE c.TABLE_SCHEMA = 'dbo' 
         AND c.TABLE_NAME = @tableName
       ORDER BY c.ORDINAL_POSITION
-    `, { tableName });
+    `);
 
     // Get foreign key columns
-    const fkResult = await this.pool.query(`
+    const fkResult = await this.pool.request()
+      .input('tableName', mssql.NVarChar, tableName)
+      .query(`
       SELECT ku.COLUMN_NAME
       FROM information_schema.TABLE_CONSTRAINTS tc
       JOIN information_schema.KEY_COLUMN_USAGE ku 
@@ -112,7 +116,7 @@ export class SQLServerAdapter extends BaseAdapter {
       WHERE tc.TABLE_SCHEMA = 'dbo' 
         AND tc.TABLE_NAME = @tableName
         AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY'
-    `, { tableName });
+    `);
 
     const foreignKeys = new Set(fkResult.recordset.map((r: any) => r.COLUMN_NAME));
 
@@ -129,7 +133,9 @@ export class SQLServerAdapter extends BaseAdapter {
   protected async getIndexes(tableName: string): Promise<Index[]> {
     if (!this.pool) throw new Error('Not connected');
 
-    const result = await this.pool.query(`
+    const result = await this.pool.request()
+      .input('tableName', mssql.NVarChar, tableName)
+      .query(`
       SELECT 
         i.name as index_name,
         COL_NAME(ic.object_id, ic.column_id) as column_name,
@@ -140,7 +146,7 @@ export class SQLServerAdapter extends BaseAdapter {
       WHERE OBJECT_NAME(i.object_id) = @tableName
         AND i.is_primary_key = 0
       ORDER BY i.name, ic.key_ordinal
-    `, { tableName });
+    `);
 
     const indexMap = new Map<string, { name: string; columns: string[]; isUnique: boolean }>();
 
@@ -163,7 +169,9 @@ export class SQLServerAdapter extends BaseAdapter {
   protected async getForeignKeys(tableName: string): Promise<ForeignKey[]> {
     if (!this.pool) throw new Error('Not connected');
 
-    const result = await this.pool.query(`
+    const result = await this.pool.request()
+      .input('tableName', mssql.NVarChar, tableName)
+      .query(`
       SELECT 
         fk.name as fk_name,
         cp.name as column_name,
@@ -176,7 +184,7 @@ export class SQLServerAdapter extends BaseAdapter {
       JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
       WHERE fk.parent_object_id = OBJECT_ID(@tableName)
       ORDER BY fk.name, fkc.constraint_column_id
-    `, { tableName });
+    `);
 
     const fkMap = new Map<string, ForeignKey>();
 

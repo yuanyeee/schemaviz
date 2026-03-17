@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { Command } from 'commander';
 import { extract } from './commands/extract';
 import { diagram } from './commands/diagram';

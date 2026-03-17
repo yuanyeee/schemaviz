@@ -1,0 +1,180 @@
+{
+  "database": "ecommerce_demo",
+  "generatedAt": "2026-03-16T11:17:00.000Z",
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        { "name": "id",         "type": "integer",                    "nullable": false, "isPrimaryKey": true,  "isForeignKey": false },
+        { "name": "email",      "type": "varchar(255)",               "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "name",       "type": "varchar(100)",               "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "password_hash", "type": "varchar(255)",           "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "role",       "type": "varchar(20)",                "nullable": false, "defaultValue": "'customer'", "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "created_at", "type": "timestamp without time zone","nullable": false, "defaultValue": "now()", "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "updated_at", "type": "timestamp without time zone","nullable": false, "defaultValue": "now()", "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [
+        { "name": "users_pkey",        "columns": ["id"],    "isUnique": true },
+        { "name": "users_email_ukey",  "columns": ["email"], "isUnique": true }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "name": "categories",
+      "columns": [
+        { "name": "id",          "type": "integer",      "nullable": false, "isPrimaryKey": true,  "isForeignKey": false },
+        { "name": "name",        "type": "varchar(100)", "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "parent_id",   "type": "integer",      "nullable": true,  "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "description", "type": "text",         "nullable": true,  "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [
+        { "name": "categories_pkey",      "columns": ["id"],        "isUnique": true },
+        { "name": "categories_parent_idx","columns": ["parent_id"], "isUnique": false }
+      ],
+      "foreignKeys": [
+        {
+          "name": "fk_categories_parent",
+          "columns": ["parent_id"],
+          "referencedTable": "categories",
+          "referencedColumns": ["id"]
+        }
+      ]
+    },
+    {
+      "name": "products",
+      "columns": [
+        { "name": "id",          "type": "integer",        "nullable": false, "isPrimaryKey": true,  "isForeignKey": false },
+        { "name": "category_id", "type": "integer",        "nullable": false, "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "name",        "type": "varchar(255)",   "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "description", "type": "text",           "nullable": true,  "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "price",       "type": "numeric(10,2)",  "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "stock",       "type": "integer",        "nullable": false, "defaultValue": "0",  "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "sku",         "type": "varchar(100)",   "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "created_at",  "type": "timestamp without time zone", "nullable": false, "defaultValue": "now()", "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "updated_at",  "type": "timestamp without time zone", "nullable": false, "defaultValue": "now()", "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [
+        { "name": "products_pkey",        "columns": ["id"],          "isUnique": true },
+        { "name": "products_sku_ukey",    "columns": ["sku"],         "isUnique": true },
+        { "name": "products_category_idx","columns": ["category_id"], "isUnique": false }
+      ],
+      "foreignKeys": [
+        {
+          "name": "fk_products_category",
+          "columns": ["category_id"],
+          "referencedTable": "categories",
+          "referencedColumns": ["id"]
+        }
+      ]
+    },
+    {
+      "name": "orders",
+      "columns": [
+        { "name": "id",          "type": "integer",       "nullable": false, "isPrimaryKey": true,  "isForeignKey": false },
+        { "name": "user_id",     "type": "integer",       "nullable": false, "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "status",      "type": "varchar(20)",   "nullable": false, "defaultValue": "'pending'", "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "total_price", "type": "numeric(10,2)", "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "note",        "type": "text",          "nullable": true,  "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "created_at",  "type": "timestamp without time zone", "nullable": false, "defaultValue": "now()", "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "updated_at",  "type": "timestamp without time zone", "nullable": false, "defaultValue": "now()", "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [
+        { "name": "orders_pkey",     "columns": ["id"],      "isUnique": true },
+        { "name": "orders_user_idx", "columns": ["user_id"], "isUnique": false },
+        { "name": "orders_status_idx","columns": ["status"], "isUnique": false }
+      ],
+      "foreignKeys": [
+        {
+          "name": "fk_orders_user",
+          "columns": ["user_id"],
+          "referencedTable": "users",
+          "referencedColumns": ["id"]
+        }
+      ]
+    },
+    {
+      "name": "order_items",
+      "columns": [
+        { "name": "id",         "type": "integer",       "nullable": false, "isPrimaryKey": true,  "isForeignKey": false },
+        { "name": "order_id",   "type": "integer",       "nullable": false, "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "product_id", "type": "integer",       "nullable": false, "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "quantity",   "type": "integer",       "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "unit_price", "type": "numeric(10,2)", "nullable": false, "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [
+        { "name": "order_items_pkey",       "columns": ["id"],         "isUnique": true },
+        { "name": "order_items_order_idx",  "columns": ["order_id"],   "isUnique": false },
+        { "name": "order_items_product_idx","columns": ["product_id"], "isUnique": false }
+      ],
+      "foreignKeys": [
+        {
+          "name": "fk_order_items_order",
+          "columns": ["order_id"],
+          "referencedTable": "orders",
+          "referencedColumns": ["id"]
+        },
+        {
+          "name": "fk_order_items_product",
+          "columns": ["product_id"],
+          "referencedTable": "products",
+          "referencedColumns": ["id"]
+        }
+      ]
+    },
+    {
+      "name": "addresses",
+      "columns": [
+        { "name": "id",          "type": "integer",      "nullable": false, "isPrimaryKey": true,  "isForeignKey": false },
+        { "name": "user_id",     "type": "integer",      "nullable": false, "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "label",       "type": "varchar(50)",  "nullable": true,  "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "postal_code", "type": "varchar(20)",  "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "prefecture",  "type": "varchar(50)",  "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "city",        "type": "varchar(100)", "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "street",      "type": "varchar(255)", "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "is_default",  "type": "boolean",      "nullable": false, "defaultValue": "false", "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [
+        { "name": "addresses_pkey",     "columns": ["id"],      "isUnique": true },
+        { "name": "addresses_user_idx", "columns": ["user_id"], "isUnique": false }
+      ],
+      "foreignKeys": [
+        {
+          "name": "fk_addresses_user",
+          "columns": ["user_id"],
+          "referencedTable": "users",
+          "referencedColumns": ["id"]
+        }
+      ]
+    },
+    {
+      "name": "reviews",
+      "columns": [
+        { "name": "id",         "type": "integer",    "nullable": false, "isPrimaryKey": true,  "isForeignKey": false },
+        { "name": "product_id", "type": "integer",    "nullable": false, "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "user_id",    "type": "integer",    "nullable": false, "isPrimaryKey": false, "isForeignKey": true },
+        { "name": "rating",     "type": "smallint",   "nullable": false, "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "comment",    "type": "text",       "nullable": true,  "isPrimaryKey": false, "isForeignKey": false },
+        { "name": "created_at", "type": "timestamp without time zone", "nullable": false, "defaultValue": "now()", "isPrimaryKey": false, "isForeignKey": false }
+      ],
+      "indexes": [
+        { "name": "reviews_pkey",       "columns": ["id"],         "isUnique": true },
+        { "name": "reviews_product_idx","columns": ["product_id"], "isUnique": false },
+        { "name": "reviews_user_idx",   "columns": ["user_id"],    "isUnique": false }
+      ],
+      "foreignKeys": [
+        {
+          "name": "fk_reviews_product",
+          "columns": ["product_id"],
+          "referencedTable": "products",
+          "referencedColumns": ["id"]
+        },
+        {
+          "name": "fk_reviews_user",
+          "columns": ["user_id"],
+          "referencedTable": "users",
+          "referencedColumns": ["id"]
+        }
+      ]
+    }
+  ]
+}
