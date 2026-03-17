@@ -72,7 +72,7 @@ describe('buildHtml', () => {
   it('includes interactive controls (zoom, theme, copy, export)', () => {
     const html = buildHtml(schema);
     expect(html).toContain('toggleTheme');
-    expect(html).toContain('copyMermaid');
+    expect(html).toContain('copyDiagramCode');
     expect(html).toContain('exportSvg');
     expect(html).toContain('zoom(');
   });
