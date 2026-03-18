@@ -385,6 +385,12 @@ export function buildLoginHtml(): string {
           </label>
         </div>
       </div>
+      <div class="form-row">
+        <label></label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--text-muted);cursor:pointer">
+          <input type="checkbox" id="savePassword" style="accent-color:var(--accent)"> パスワードを保存する
+        </label>
+      </div>
     </div>
 
     <div class="form-row" id="dbRow">
@@ -575,6 +581,8 @@ export function buildLoginHtml(): string {
 
     const tout = parseInt(document.getElementById('timeout').value, 10);
     if (!isNaN(tout)) config.connectionTimeout = tout * 1000;
+    var savePwCb = document.getElementById('savePassword');
+    if (savePwCb && savePwCb.checked) config.savePassword = true;
     return config;
   }
 
@@ -664,7 +672,8 @@ export function buildLoginHtml(): string {
         var item = document.createElement('div');
         item.className = 'history-item';
         var dateStr = new Date(c.lastUsed).toLocaleDateString();
-        item.innerHTML = '<span class="hi-label">' + c.label + '</span>' +
+        var pwIcon = c.config._encodedPassword ? ' <span title="パスワード保存済み" style="font-size:.7rem;color:var(--ok)">&#x1f511;</span>' : '';
+        item.innerHTML = '<span class="hi-label">' + c.label + pwIcon + '</span>' +
           '<span class="hi-date">' + dateStr + '</span>' +
           '<button class="hi-del" title="削除" data-idx="' + i + '">✕</button>';
         item.addEventListener('click', function(e) {
@@ -704,8 +713,13 @@ export function buildLoginHtml(): string {
       }
       if (config.ssl) document.getElementById('sslMode').value = config.ssl;
     }
-    // Focus password field since it's not saved
-    if (config.type !== 'sqlite') {
+    // Fill password if saved, otherwise focus password field
+    if (config._encodedPassword) {
+      try {
+        document.getElementById('password').value = atob(config._encodedPassword);
+        document.getElementById('savePassword').checked = true;
+      } catch (e) {}
+    } else if (config.type !== 'sqlite') {
       document.getElementById('password').focus();
     }
     hideError();
@@ -2091,7 +2105,11 @@ export function buildHtml(schema: Schema): string {
     if (c.port) el('port').value = c.port;
     if (c.database) el('db').value = c.database;
     if (c.user) el('user').value = c.user;
-    el('pass').value = '';
+    if (c._encodedPassword) {
+      try { el('pass').value = atob(c._encodedPassword); } catch (e) { el('pass').value = ''; }
+    } else {
+      el('pass').value = '';
+    }
   }
 
   function diffGetConnConfig(side) {
@@ -2293,9 +2311,13 @@ function saveConnection(config: any): void {
     if (config.user) label += ` (${config.user})`;
   }
 
-  // Remove password from stored config for security
+  // Handle password: save obfuscated if requested, otherwise remove
   const safeConfig = { ...config };
+  if (safeConfig.savePassword && safeConfig.password) {
+    safeConfig._encodedPassword = Buffer.from(safeConfig.password, 'utf-8').toString('base64');
+  }
   delete safeConfig.password;
+  delete safeConfig.savePassword;
   delete safeConfig.connectionTimeout;
 
   // Check for duplicate by label
