@@ -124,7 +124,7 @@ describe('buildHtml', () => {
     expect(html).toContain('function runValidate');
     expect(html).toContain('function runGenerate');
     expect(html).toContain('function renderSnapshotPanel');
-    expect(html).toContain('function runDiff');
+    expect(html).toContain('function runDiffAdvanced');
   });
 
   it('includes escapeHtml utility function', () => {
