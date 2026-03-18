@@ -1,6 +1,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import { Schema } from '../types';
 import { generateMermaidCode, generatePlantUML } from './generator';
 import { createAdapter } from '../adapters/base';
@@ -256,6 +257,46 @@ export function buildLoginHtml(): string {
       color: var(--text-muted);
       text-align: center;
     }
+
+    /* Connection history */
+    .history-section {
+      width: 460px;
+      margin-top: 12px;
+    }
+    .history-header {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .history-list {
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: border-color .12s;
+      font-size: 0.8rem;
+    }
+    .history-item:hover { border-color: var(--accent); }
+    .history-item .hi-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-item .hi-date { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+    .history-item .hi-del {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 0.85rem; padding: 0 2px; opacity: 0.5;
+    }
+    .history-item .hi-del:hover { opacity: 1; color: var(--error); }
   </style>
 </head>
 <body data-theme="dark">
@@ -396,6 +437,11 @@ export function buildLoginHtml(): string {
   </div>
 
 </div><!-- /dialog -->
+
+<div class="history-section" id="historySection" style="display:none">
+  <div class="history-header">📋 接続履歴 (Connection History)</div>
+  <div class="history-list" id="historyList"></div>
+</div>
 
 <p class="footnote">SchemaViz — Database Schema Visualizer</p>
 
@@ -604,6 +650,74 @@ export function buildLoginHtml(): string {
     const body = document.body;
     body.dataset.theme = body.dataset.theme === 'dark' ? 'light' : 'dark';
   }
+
+  // ─── Connection History ───
+  async function loadHistory() {
+    try {
+      const data = await fetch('/api/connections').then(function(r) { return r.json(); });
+      const conns = data.connections || [];
+      if (conns.length === 0) { document.getElementById('historySection').style.display = 'none'; return; }
+      document.getElementById('historySection').style.display = '';
+      var list = document.getElementById('historyList');
+      list.innerHTML = '';
+      conns.forEach(function(c, i) {
+        var item = document.createElement('div');
+        item.className = 'history-item';
+        var dateStr = new Date(c.lastUsed).toLocaleDateString();
+        item.innerHTML = '<span class="hi-label">' + c.label + '</span>' +
+          '<span class="hi-date">' + dateStr + '</span>' +
+          '<button class="hi-del" title="削除" data-idx="' + i + '">✕</button>';
+        item.addEventListener('click', function(e) {
+          if (e.target.classList.contains('hi-del')) return;
+          applyConnection(c.config);
+        });
+        item.querySelector('.hi-del').addEventListener('click', function(e) {
+          e.stopPropagation();
+          deleteHistory(parseInt(this.dataset.idx, 10));
+        });
+        list.appendChild(item);
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function applyConnection(config) {
+    // Set DB type
+    var dbType = config.type;
+    if (config.instanceName) dbType = 'sqlserver-express';
+    document.getElementById('dbType').value = dbType;
+    onDbTypeChange();
+
+    if (config.type === 'sqlite') {
+      document.getElementById('filename').value = config.filename || '';
+    } else {
+      document.getElementById('host').value = config.host || 'localhost';
+      if (config.port) document.getElementById('port').value = config.port;
+      if (config.instanceName) document.getElementById('instanceName').value = config.instanceName;
+      document.getElementById('user').value = config.user || '';
+      document.getElementById('database').value = config.database || '';
+      if (config.authType === 'windows') {
+        document.getElementById('authType').value = 'windows';
+        onAuthTypeChange();
+        if (config.domain) document.getElementById('domain').value = config.domain;
+      }
+      if (config.ssl) document.getElementById('sslMode').value = config.ssl;
+    }
+    // Focus password field since it's not saved
+    if (config.type !== 'sqlite') {
+      document.getElementById('password').focus();
+    }
+    hideError();
+  }
+
+  async function deleteHistory(idx) {
+    await fetch('/api/connections/' + idx, { method: 'DELETE' });
+    loadHistory();
+  }
+
+  // Load history on page load
+  loadHistory();
 
   // Allow Enter key to connect
   document.addEventListener('keydown', e => {
@@ -888,11 +1002,54 @@ export function buildTableSelectHtml(tables: string[], database: string): string
 </html>`;
 }
 
+// ─── PlantUML server-side encoding ────────────────────────────────────────────
+
+function plantumlEncode(text: string): string {
+  const deflated = zlib.deflateRawSync(Buffer.from(text, 'utf-8'), { level: 9 });
+  return encode64(deflated);
+}
+
+function encode64(data: Buffer): string {
+  let r = '';
+  for (let i = 0; i < data.length; i += 3) {
+    const b1 = data[i];
+    const b2 = i + 1 < data.length ? data[i + 1] : 0;
+    const b3 = i + 2 < data.length ? data[i + 2] : 0;
+    r += append3bytes(b1, b2, b3);
+  }
+  return r;
+}
+
+function append3bytes(b1: number, b2: number, b3: number): string {
+  const c1 = b1 >> 2;
+  const c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
+  const c3 = ((b2 & 0xF) << 2) | (b3 >> 6);
+  const c4 = b3 & 0x3F;
+  return encode6bit(c1) + encode6bit(c2) + encode6bit(c3) + encode6bit(c4);
+}
+
+function encode6bit(b: number): string {
+  if (b < 10) return String.fromCharCode(48 + b);
+  b -= 10;
+  if (b < 26) return String.fromCharCode(65 + b);
+  b -= 26;
+  if (b < 26) return String.fromCharCode(97 + b);
+  b -= 26;
+  if (b === 0) return '-';
+  if (b === 1) return '_';
+  return '?';
+}
+
+function getPlantUMLUrl(pumlCode: string): string {
+  return 'https://www.plantuml.com/plantuml/svg/' + plantumlEncode(pumlCode);
+}
+
 // ─── Main Diagram Page ────────────────────────────────────────────────────────
 
 export function buildHtml(schema: Schema): string {
   const mermaidCode = generateMermaidCode(schema);
   const plantumlCode = generatePlantUML(schema);
+  const plantumlUrl = getPlantUMLUrl(plantumlCode);
   const schemaJson = JSON.stringify(schema, null, 2);
 
   return `<!DOCTYPE html>
@@ -1271,12 +1428,6 @@ export function buildHtml(schema: Schema): string {
     /* PlantUML container */
     #plantumlDiagram { display: none; }
     #plantumlDiagram img { max-width: none; }
-    .plantuml-loading {
-      color: var(--text-muted);
-      font-size: 0.85rem;
-      padding: 40px;
-      text-align: center;
-    }
     .plantuml-error {
       color: var(--error);
       font-size: 0.85rem;
@@ -1322,7 +1473,14 @@ export function buildHtml(schema: Schema): string {
         <pre class="mermaid">${mermaidCode}</pre>
       </div>
       <div id="plantumlDiagram">
-        <div class="plantuml-loading" id="plantumlLoading">PlantUML図を読み込み中…</div>
+        <img id="plantumlImg" src="${plantumlUrl}" alt="PlantUML ER Diagram"
+             style="max-width:none"
+             onload="this.dataset.loaded='1';document.getElementById('plantumlFallback').style.display='none'"
+             onerror="this.style.display='none';document.getElementById('plantumlFallback').style.display='block'">
+        <div id="plantumlFallback" style="display:none;padding:16px;max-width:700px">
+          <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:10px">PlantUML サーバーに接続できません。下記コードをコピーして <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color:var(--accent)">plantuml.com</a> で描画してください。</p>
+          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:0.78rem;overflow:auto;max-height:60vh;white-space:pre;font-family:monospace;color:var(--text)">${plantumlCode.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+        </div>
       </div>
     </div>
     <div class="zoom-controls">
@@ -1360,7 +1518,6 @@ export function buildHtml(schema: Schema): string {
 
   let scale = 1;
   let currentDiagramFormat = 'mermaid';
-  let plantumlLoaded = false;
 
   // Init Mermaid
   mermaid.initialize({
@@ -1475,94 +1632,7 @@ export function buildHtml(schema: Schema): string {
     mermaid.initialize({ startOnLoad: false, theme: isDark ? 'default' : 'dark' });
   }
 
-  // ─── PlantUML rendering via public server ───
-  function plantumlEncode(text) {
-    // PlantUML uses a custom deflate+base64 encoding
-    // We use the ~h hex encoding for simplicity (works with the server)
-    // Actually, the simplest is to use the /svg/~1 (plain text) endpoint via POST
-    // But for <img> we need GET URL, so use the hex encoding approach
-    function encode64(data) {
-      var r = '';
-      for (var i = 0; i < data.length; i += 3) {
-        if (i + 2 === data.length) {
-          r += append3bytes(data[i], data[i + 1], 0);
-        } else if (i + 1 === data.length) {
-          r += append3bytes(data[i], 0, 0);
-        } else {
-          r += append3bytes(data[i], data[i + 1], data[i + 2]);
-        }
-      }
-      return r;
-    }
-    function append3bytes(b1, b2, b3) {
-      var c1 = b1 >> 2;
-      var c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
-      var c3 = ((b2 & 0xF) << 2) | (b3 >> 6);
-      var c4 = b3 & 0x3F;
-      var r = '';
-      r += encode6bit(c1 & 0x3F);
-      r += encode6bit(c2 & 0x3F);
-      r += encode6bit(c3 & 0x3F);
-      r += encode6bit(c4 & 0x3F);
-      return r;
-    }
-    function encode6bit(b) {
-      if (b < 10) return String.fromCharCode(48 + b);
-      b -= 10;
-      if (b < 26) return String.fromCharCode(65 + b);
-      b -= 26;
-      if (b < 26) return String.fromCharCode(97 + b);
-      b -= 26;
-      if (b === 0) return '-';
-      if (b === 1) return '_';
-      return '?';
-    }
-    // deflate then encode
-    var data = unescape(encodeURIComponent(text));
-    var deflated = pako.deflateRaw(data, { level: 9, to: 'array' });
-    return encode64(deflated);
-  }
-
-  function loadPlantUML() {
-    if (plantumlLoaded) return;
-    var container = document.getElementById('plantumlDiagram');
-    var loadingEl = document.getElementById('plantumlLoading');
-    loadingEl.textContent = 'PlantUML図を読み込み中…';
-
-    // Need pako for deflate
-    if (typeof pako === 'undefined') {
-      var script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js';
-      script.onload = function() { renderPlantUML(container, loadingEl); };
-      script.onerror = function() {
-        loadingEl.innerHTML = '<div class="plantuml-error">pako library の読み込みに失敗しました。</div>';
-      };
-      document.head.appendChild(script);
-    } else {
-      renderPlantUML(container, loadingEl);
-    }
-  }
-
-  function renderPlantUML(container, loadingEl) {
-    try {
-      var encoded = plantumlEncode(PLANTUML_CODE);
-      var url = 'https://www.plantuml.com/plantuml/svg/' + encoded;
-      var img = document.createElement('img');
-      img.alt = 'PlantUML ER Diagram';
-      img.onload = function() {
-        loadingEl.style.display = 'none';
-        plantumlLoaded = true;
-      };
-      img.onerror = function() {
-        loadingEl.innerHTML = '<div class="plantuml-error">PlantUML サーバーからの描画に失敗しました。</div>';
-      };
-      img.src = url;
-      container.appendChild(img);
-    } catch (e) {
-      loadingEl.innerHTML = '<div class="plantuml-error">PlantUML エンコードエラー: ' + e.message + '</div>';
-    }
-  }
-
+  // ─── Diagram switching (Mermaid / PlantUML) ───
   function switchDiagram(format) {
     currentDiagramFormat = format;
     var mermaidEl = document.getElementById('diagram');
@@ -1571,16 +1641,15 @@ export function buildHtml(schema: Schema): string {
     var btnP = document.getElementById('dtPlantUML');
 
     if (format === 'mermaid') {
-      mermaidEl.style.display = '';
+      mermaidEl.style.display = 'block';
       plantumlEl.style.display = 'none';
       btnM.classList.add('active');
       btnP.classList.remove('active');
     } else {
       mermaidEl.style.display = 'none';
-      plantumlEl.style.display = '';
+      plantumlEl.style.display = 'block';
       btnM.classList.remove('active');
       btnP.classList.add('active');
-      loadPlantUML();
     }
     resetZoom();
   }
@@ -1604,14 +1673,18 @@ export function buildHtml(schema: Schema): string {
       a.click();
       toast('SVG downloaded!');
     } else {
-      // For PlantUML, download the SVG from the server
-      var encoded = plantumlEncode(PLANTUML_CODE);
-      var a = document.createElement('a');
-      a.href = 'https://www.plantuml.com/plantuml/svg/' + encoded;
-      a.download = \`\${SCHEMA.database}-er-plantuml.svg\`;
-      a.target = '_blank';
-      a.click();
-      toast('PlantUML SVG opened!');
+      // PlantUML SVG: get from the <img> src
+      var img = document.getElementById('plantumlImg');
+      if (img && img.src) {
+        var a = document.createElement('a');
+        a.href = img.src;
+        a.download = \`\${SCHEMA.database}-er-plantuml.svg\`;
+        a.target = '_blank';
+        a.click();
+        toast('PlantUML SVG opened!');
+      } else {
+        toast('PlantUML diagram not ready');
+      }
     }
   }
 
@@ -1779,22 +1852,42 @@ export function buildHtml(schema: Schema): string {
     snaps.forEach(function(s) {
       opts += '<option value="' + escapeHtml(s.id) + '">' + escapeHtml(s.tag || s.id) + ' (' + new Date(s.savedAt).toLocaleDateString() + ')</option>';
     });
+    // Table filter checkboxes
+    var tableCheckboxes = '';
+    SCHEMA.tables.forEach(function(t) {
+      tableCheckboxes += '<label style="display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:.8rem;cursor:pointer"><input type="checkbox" class="diff-table-cb" value="' + escapeHtml(t.name) + '" checked style="accent-color:var(--accent)"> ' + escapeHtml(t.name) + '</label>';
+    });
+
     const inner = document.getElementById('diffPanelInner');
     if (!inner) return;
     inner.outerHTML =
       '<div class="diff-form">' +
       '<div class="form-row"><label class="form-label">From:</label><select id="diffFrom" class="search-input">' + opts + '</select></div>' +
       '<div class="form-row"><label class="form-label">To:</label><select id="diffTo" class="search-input">' + opts + '</select></div>' +
-      '<button class="btn primary" style="margin-top:10px" onclick="runDiff()">▶ Compare</button>' +
       '</div>' +
+      '<div style="margin-top:10px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+      '<span style="font-size:.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">比較テーブル</span>' +
+      '<button class="btn" style="padding:2px 6px;font-size:.7rem" onclick="document.querySelectorAll(\\'.diff-table-cb\\').forEach(function(c){c.checked=true})">全選択</button>' +
+      '<button class="btn" style="padding:2px 6px;font-size:.7rem" onclick="document.querySelectorAll(\\'.diff-table-cb\\').forEach(function(c){c.checked=false})">全解除</button>' +
+      '</div>' +
+      '<div style="max-height:150px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:4px 6px">' +
+      tableCheckboxes +
+      '</div></div>' +
+      '<button class="btn primary" style="margin-top:10px" onclick="runDiff()">▶ Compare</button>' +
       '<div id="diffResults" style="margin-top:14px"></div>';
   }
   async function runDiff() {
     const from = document.getElementById('diffFrom').value;
     const to = document.getElementById('diffTo').value;
+    // Get selected tables
+    const selectedTables = [];
+    document.querySelectorAll('.diff-table-cb:checked').forEach(function(cb) { selectedTables.push(cb.value); });
+    if (selectedTables.length === 0) { toast('比較するテーブルを選択してください'); return; }
+
     const el = document.getElementById('diffResults');
     el.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">Comparing...</span>';
-    const data = await fetch('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify({ from, to }) }).then(r => r.json());
+    const data = await fetch('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify({ from, to, tables: selectedTables }) }).then(r => r.json());
     if (data.error) { el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(data.error) + '</div>'; return; }
     const d = data.diff;
     let html = '';
@@ -1837,6 +1930,71 @@ export function buildHtml(schema: Schema): string {
 </html>`;
 }
 
+// ─── Connection History ───────────────────────────────────────────────────────
+
+interface ConnectionEntry {
+  label: string;
+  config: any;
+  lastUsed: string;
+}
+
+function getConnectionsFilePath(): string {
+  const dir = path.join(process.cwd(), '.schemaviz');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, 'connections.json');
+}
+
+function loadConnections(): ConnectionEntry[] {
+  const fp = getConnectionsFilePath();
+  if (!fs.existsSync(fp)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveConnection(config: any): void {
+  const conns = loadConnections();
+  // Build a label for display
+  let label = '';
+  if (config.type === 'sqlite') {
+    label = `SQLite: ${config.filename || ''}`;
+  } else {
+    const host = config.host || 'localhost';
+    const inst = config.instanceName ? `\\${config.instanceName}` : '';
+    const port = config.instanceName ? '' : `:${config.port || ''}`;
+    const db = config.database ? `/${config.database}` : '';
+    label = `${config.type}: ${host}${inst}${port}${db}`;
+    if (config.user) label += ` (${config.user})`;
+  }
+
+  // Remove password from stored config for security
+  const safeConfig = { ...config };
+  delete safeConfig.password;
+  delete safeConfig.connectionTimeout;
+
+  // Check for duplicate by label
+  const idx = conns.findIndex(c => c.label === label);
+  const entry: ConnectionEntry = { label, config: safeConfig, lastUsed: new Date().toISOString() };
+  if (idx >= 0) {
+    conns[idx] = entry;
+  } else {
+    conns.unshift(entry);
+  }
+  // Keep max 20 entries
+  const trimmed = conns.slice(0, 20);
+  fs.writeFileSync(getConnectionsFilePath(), JSON.stringify(trimmed, null, 2), 'utf-8');
+}
+
+function deleteConnection(index: number): boolean {
+  const conns = loadConnections();
+  if (index < 0 || index >= conns.length) return false;
+  conns.splice(index, 1);
+  fs.writeFileSync(getConnectionsFilePath(), JSON.stringify(conns, null, 2), 'utf-8');
+  return true;
+}
+
 // ─── HTTP Server ──────────────────────────────────────────────────────────────
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -1864,6 +2022,33 @@ export async function startServer(options: ServeOptions): Promise<void> {
 
   const server = http.createServer((req, res) => {
     const url = req.url ?? '/';
+
+    // ── GET /api/connections — list saved connections ──────────────────────
+    if (url === '/api/connections' && req.method === 'GET') {
+      try {
+        const conns = loadConnections();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ connections: conns }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      }
+      return;
+    }
+
+    // ── DELETE /api/connections/:index — delete a saved connection ───────────
+    if (url.startsWith('/api/connections/') && req.method === 'DELETE') {
+      const idx = parseInt(url.slice('/api/connections/'.length), 10);
+      try {
+        const ok = deleteConnection(idx);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      }
+      return;
+    }
 
     // ── POST /api/databases — list available databases ───────────────────────
     if (url === '/api/databases' && req.method === 'POST') {
@@ -1904,6 +2089,8 @@ export async function startServer(options: ServeOptions): Promise<void> {
           currentAdapter = adapter;
           currentConfig = config;
           availableTableNames = tableNames;
+          // Save to connection history
+          try { saveConnection(config); } catch {}
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, database: config.database || '(default)', tables: tableNames.length }));
         } catch (err) {
@@ -2094,16 +2281,22 @@ export async function startServer(options: ServeOptions): Promise<void> {
       const currentSchema = schema;
       readBody(req).then(body => {
         try {
-          const { from, to } = JSON.parse(body);
+          const { from, to, tables: filterTables } = JSON.parse(body);
           const resolveRef = (ref: string): Schema | null => {
             if (ref === 'current') return currentSchema;
             const snap = loadSnapshot(SNAP_BASE_DIR, ref);
             return snap ? snap.schema : null;
           };
-          const s1 = resolveRef(from);
-          const s2 = resolveRef(to);
+          let s1 = resolveRef(from);
+          let s2 = resolveRef(to);
           if (!s1) { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: `Snapshot not found: ${from}` })); return; }
           if (!s2) { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: `Snapshot not found: ${to}` })); return; }
+          // Filter schemas to selected tables if specified
+          if (filterTables && Array.isArray(filterTables) && filterTables.length > 0) {
+            const tableSet = new Set(filterTables as string[]);
+            s1 = { ...s1, tables: s1.tables.filter(t => tableSet.has(t.name)) };
+            s2 = { ...s2, tables: s2.tables.filter(t => tableSet.has(t.name)) };
+          }
           const diffResult = computeDiff(s1, s2);
           const migration = generateMigrationSQL(s1.database, diffResult);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
