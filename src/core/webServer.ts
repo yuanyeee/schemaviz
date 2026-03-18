@@ -1384,6 +1384,9 @@ export function buildHtml(schema: Schema): string {
     .snap-date { font-size: .75rem; color: var(--text-muted); white-space: nowrap; }
 
     /* Diff */
+    .diff-mode-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+    .diff-mode-tab { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px 4px 0 0; padding: 5px 14px; font-size: .78rem; color: var(--text-muted); cursor: pointer; font-weight: 600; }
+    .diff-mode-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .diff-side { flex: 1; min-width: 220px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
     .diff-form { display: flex; flex-direction: column; gap: 8px; }
     .form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
@@ -1848,6 +1851,7 @@ export function buildHtml(schema: Schema): string {
   var diffLeftTables = [];
   var diffRightTables = [];
   var diffSnapshots = [];
+  var diffMode = 'quick'; // 'quick' or 'advanced'
 
   async function renderDiffPanel() {
     document.getElementById('fpBody').innerHTML = '<div id="diffPanelInner"><span style="color:var(--text-muted);font-size:.85rem">Loading...</span></div>';
@@ -1857,6 +1861,12 @@ export function buildHtml(schema: Schema): string {
     var connData = await fetch('/api/connections').then(function(r) { return r.json(); });
     diffSnapshots = (snapData.snapshots || []).slice().reverse();
     var conns = connData.connections || [];
+
+    // Build current schema table options for Quick Compare
+    var currentTableOpts = '';
+    SCHEMA.tables.forEach(function(t) {
+      currentTableOpts += '<option value="' + escapeHtml(t.name) + '">' + escapeHtml(t.name) + '</option>';
+    });
 
     // Build snapshot options
     var snapOpts = '';
@@ -1870,25 +1880,32 @@ export function buildHtml(schema: Schema): string {
       connOpts += '<option value="' + i + '">' + escapeHtml(c.label) + '</option>';
     });
 
+    // ── Quick Compare Tab ──
+    var quickHtml = '<div id="diff-quick-panel">';
+    quickHtml += '<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:8px">同じスキーマ内の2つのテーブルを項目レベルで比較します</div>';
+    quickHtml += '<div class="form-row"><label class="form-label">Table A:</label>';
+    quickHtml += '<select id="diff-quick-left" class="search-input">' + currentTableOpts + '</select></div>';
+    quickHtml += '<div class="form-row"><label class="form-label">Table B:</label>';
+    quickHtml += '<select id="diff-quick-right" class="search-input">' + currentTableOpts + '</select></div>';
+    quickHtml += '<button class="btn primary" style="margin-top:8px" onclick="runQuickTableCompare()">▶ Compare Tables</button>';
+    quickHtml += '</div>';
+
+    // ── Advanced Tab (two-source) ──
     function buildSideHtml(side) {
-      var id = side; // 'left' or 'right'
+      var id = side;
       var label = side === 'left' ? 'Left (From)' : 'Right (To)';
       var h = '';
       h += '<div class="diff-side" id="diff-' + id + '">';
       h += '<div style="font-size:.8rem;font-weight:700;color:var(--accent);text-transform:uppercase;margin-bottom:6px">' + label + '</div>';
-      // Source selector
       h += '<div class="form-row"><label class="form-label">Source:</label>';
       h += '<select id="diff-' + id + '-source" class="search-input" onchange="diffSourceChanged(\\'' + id + '\\')">';
       h += '<option value="current">Current Schema</option>';
       h += '<option value="snapshot">Snapshot</option>';
       h += '<option value="connection">External DB</option>';
       h += '</select></div>';
-      // Snapshot selector (hidden by default)
       h += '<div id="diff-' + id + '-snap-row" class="form-row" style="display:none"><label class="form-label">Snapshot:</label>';
       h += '<select id="diff-' + id + '-snap" class="search-input">' + snapOpts + '</select></div>';
-      // Connection form (hidden by default)
       h += '<div id="diff-' + id + '-conn" style="display:none">';
-      // History dropdown
       if (conns.length > 0) {
         h += '<div class="form-row"><label class="form-label">History:</label>';
         h += '<select id="diff-' + id + '-connhist" class="search-input" onchange="diffFillFromHistory(\\'' + id + '\\')">';
@@ -1905,36 +1922,154 @@ export function buildHtml(schema: Schema): string {
       h += '<div class="form-row"><label class="form-label">User:</label><input id="diff-' + id + '-user" class="search-input"></div>';
       h += '<div class="form-row"><label class="form-label">Password:</label><input id="diff-' + id + '-pass" class="search-input" type="password"></div>';
       h += '</div>';
-      // Load tables button
       h += '<button class="btn" style="margin-top:6px;font-size:.78rem" onclick="diffLoadTables(\\'' + id + '\\')">Load Tables</button>';
-      // Table checkboxes area
       h += '<div id="diff-' + id + '-tables" style="margin-top:6px"></div>';
       h += '</div>';
       return h;
     }
 
-    var html = '<div style="display:flex;gap:12px;flex-wrap:wrap">';
-    html += buildSideHtml('left');
-    html += buildSideHtml('right');
-    html += '</div>';
+    var advHtml = '<div id="diff-advanced-panel" style="display:none">';
+    advHtml += '<div style="display:flex;gap:12px;flex-wrap:wrap">';
+    advHtml += buildSideHtml('left');
+    advHtml += buildSideHtml('right');
+    advHtml += '</div>';
+    advHtml += '<div id="diff-mapping-section" style="margin-top:12px;display:none">';
+    advHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+    advHtml += '<span style="font-size:.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Table Mapping</span>';
+    advHtml += '<button class="btn" style="padding:2px 6px;font-size:.7rem" onclick="diffAddMapping()">+ Add</button>';
+    advHtml += '</div>';
+    advHtml += '<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:4px">異なるテーブル名を対応付けて項目レベルで比較できます</div>';
+    advHtml += '<div id="diff-mappings" style="max-height:120px;overflow-y:auto"></div>';
+    advHtml += '</div>';
+    advHtml += '<button class="btn primary" style="margin-top:12px" onclick="runDiffAdvanced()">▶ Compare</button>';
+    advHtml += '</div>';
 
-    // Table mapping section
-    html += '<div id="diff-mapping-section" style="margin-top:12px;display:none">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-    html += '<span style="font-size:.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Table Mapping (optional)</span>';
-    html += '<button class="btn" style="padding:2px 6px;font-size:.7rem" onclick="diffAddMapping()">+ Add</button>';
+    // Mode toggle tabs
+    var html = '<div class="diff-mode-tabs">';
+    html += '<button class="diff-mode-tab active" id="diff-tab-quick" onclick="switchDiffMode(\\'quick\\')">Quick Compare</button>';
+    html += '<button class="diff-mode-tab" id="diff-tab-advanced" onclick="switchDiffMode(\\'advanced\\')">Advanced</button>';
     html += '</div>';
-    html += '<div id="diff-mappings" style="max-height:120px;overflow-y:auto"></div>';
-    html += '</div>';
-
-    // Compare button
-    html += '<button class="btn primary" style="margin-top:12px" onclick="runDiffAdvanced()">▶ Compare</button>';
+    html += quickHtml;
+    html += advHtml;
     html += '<div id="diffResults" style="margin-top:14px"></div>';
 
     document.getElementById('diffPanelInner').innerHTML = html;
-
-    // Store conns for history fill
     window._diffConns = conns;
+  }
+
+  function switchDiffMode(mode) {
+    diffMode = mode;
+    document.getElementById('diff-quick-panel').style.display = mode === 'quick' ? 'block' : 'none';
+    document.getElementById('diff-advanced-panel').style.display = mode === 'advanced' ? 'block' : 'none';
+    document.getElementById('diff-tab-quick').classList.toggle('active', mode === 'quick');
+    document.getElementById('diff-tab-advanced').classList.toggle('active', mode === 'advanced');
+    document.getElementById('diffResults').innerHTML = '';
+  }
+
+  async function runQuickTableCompare() {
+    var tableA = document.getElementById('diff-quick-left').value;
+    var tableB = document.getElementById('diff-quick-right').value;
+    if (tableA === tableB) { toast('異なるテーブルを選択してください'); return; }
+
+    var el = document.getElementById('diffResults');
+    el.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">Comparing ' + escapeHtml(tableA) + ' vs ' + escapeHtml(tableB) + '...</span>';
+
+    // Use diff-advanced with table mapping: map right table name to left table name
+    var body = {
+      left: { source: 'current', tables: [tableA] },
+      right: { source: 'current', tables: [tableB] },
+      tableMapping: [{ left: tableA, right: tableB }]
+    };
+
+    try {
+      var data = await fetch('/api/diff-advanced', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(body)
+      }).then(function(r) { return r.json(); });
+
+      if (data.error) { el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(data.error) + '</div>'; return; }
+      renderDiffResults(el, data, tableA + ' vs ' + tableB);
+    } catch (e) {
+      el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(String(e)) + '</div>';
+    }
+  }
+
+  function renderDiffResults(el, data, title) {
+    var d = data.diff;
+    var html = '';
+    if (title) {
+      html += '<div style="font-size:.82rem;font-weight:700;color:var(--accent);margin-bottom:8px">' + escapeHtml(title) + '</div>';
+    }
+
+    // Summary
+    var totalChanges = d.added.length + d.removed.length + d.modified.length;
+    if (totalChanges === 0) {
+      html += '<div style="color:var(--ok);padding:8px 0;font-size:.85rem">✔ No differences found.</div>';
+      el.innerHTML = html;
+      return;
+    }
+
+    html += '<div class="diff-section"><div class="diff-section-title added">+ Added Tables (' + d.added.length + ')</div>';
+    if (d.added.length) {
+      d.added.forEach(function(t) {
+        html += '<div class="diff-modified-table" style="border-left:3px solid var(--ok)">';
+        html += '<div class="diff-table-name" style="color:var(--ok)">+ ' + escapeHtml(t.name) + '</div>';
+        (t.columns || []).forEach(function(col) {
+          var colInfo = escapeHtml(col.name) + ' <span style="color:var(--text-muted)">' + escapeHtml(col.type || '') + '</span>';
+          if (col.nullable === false) colInfo += ' <span style="font-size:.7rem;color:var(--warn)">NOT NULL</span>';
+          if (col.isPrimaryKey) colInfo += ' <span style="font-size:.7rem;color:var(--accent)">PK</span>';
+          html += '<div class="diff-col diff-added" style="padding-left:8px">+ ' + colInfo + '</div>';
+        });
+        html += '</div>';
+      });
+    } else {
+      html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>';
+    }
+    html += '</div>';
+
+    html += '<div class="diff-section"><div class="diff-section-title removed">- Removed Tables (' + d.removed.length + ')</div>';
+    if (d.removed.length) {
+      d.removed.forEach(function(t) {
+        html += '<div class="diff-modified-table" style="border-left:3px solid var(--error)">';
+        html += '<div class="diff-table-name" style="color:var(--error)">- ' + escapeHtml(t.name) + '</div>';
+        (t.columns || []).forEach(function(col) {
+          var colInfo = escapeHtml(col.name) + ' <span style="color:var(--text-muted)">' + escapeHtml(col.type || '') + '</span>';
+          html += '<div class="diff-col diff-removed" style="padding-left:8px">- ' + colInfo + '</div>';
+        });
+        html += '</div>';
+      });
+    } else {
+      html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>';
+    }
+    html += '</div>';
+
+    html += '<div class="diff-section"><div class="diff-section-title modified">~ Modified Tables (' + d.modified.length + ')</div>';
+    if (d.modified.length) {
+      d.modified.forEach(function(m) {
+        html += '<div class="diff-modified-table"><div class="diff-table-name">~ ' + escapeHtml(m.name) + '</div>';
+        (m.columns || []).forEach(function(c) {
+          var sym = c.type === 'added' ? '+' : c.type === 'removed' ? '-' : '~';
+          var detail = '';
+          if (c.type === 'modified') {
+            var parts = [];
+            if (c.oldType !== c.newType) parts.push(escapeHtml(c.oldType) + ' -> ' + escapeHtml(c.newType));
+            if (c.oldNullable !== c.newNullable) parts.push(c.oldNullable ? 'NULL -> NOT NULL' : 'NOT NULL -> NULL');
+            if (parts.length > 0) detail = ' (' + parts.join(', ') + ')';
+          }
+          html += '<div class="diff-col diff-' + c.type + '">' + sym + ' ' + escapeHtml(c.name) + detail + '</div>';
+        });
+        html += '</div>';
+      });
+    } else {
+      html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>';
+    }
+    html += '</div>';
+
+    html += '<details class="migration-details"><summary>Migration SQL</summary>';
+    html += '<button class="btn" style="margin:6px 0" data-copy-id="migrationSql">⎘ Copy SQL</button>';
+    html += '<pre class="code-block" id="migrationSql">' + escapeHtml(data.migration) + '</pre></details>';
+    el.innerHTML = html;
   }
 
   function diffSourceChanged(side) {
@@ -1981,21 +2116,9 @@ export function buildHtml(schema: Schema): string {
         tables = SCHEMA.tables.map(function(t) { return t.name; });
       } else if (src === 'snapshot') {
         var snapId = document.getElementById('diff-' + side + '-snap').value;
-        // Load snapshot schema to get table list
-        var sData = await fetch('/api/diff', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify({ from: snapId, to: snapId })
-        }).then(function(r) { return r.json(); });
-        // All tables appear as "unchanged" or in the diff data, so we derive from the snapshot
-        // Instead, just get full snapshot tables by extracting from current+snap diff (added = snap-only tables)
-        // Better approach: use SCHEMA table list if current, or fetch snapshot tables
-        // Since we cant easily list snapshot tables from /api, use /api/diff trick: compare snap to empty
-        // Actually we can get tables from snapshot via fetch-schema endpoint indirectly.
-        // Simplest: load the snapshot schema via a simple API. Let us use the current endpoint to get all tables.
-        // For now, use current schema tables as approximation — the diff will handle filtering
-        tables = SCHEMA.tables.map(function(t) { return t.name; });
-        toast('Snapshot tables loaded (based on current schema names)');
+        var snapResp = await fetch('/api/snapshots/' + encodeURIComponent(snapId) + '/tables').then(function(r) { return r.json(); });
+        if (snapResp.error) { container.innerHTML = '<div style="color:var(--error);font-size:.8rem">' + escapeHtml(snapResp.error) + '</div>'; return; }
+        tables = snapResp.tables || [];
       } else if (src === 'connection') {
         var config = diffGetConnConfig(side);
         var resp = await fetch('/api/fetch-tables', {
@@ -2111,32 +2234,8 @@ export function buildHtml(schema: Schema): string {
       }).then(function(r) { return r.json(); });
 
       if (data.error) { el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(data.error) + '</div>'; return; }
-      var d = data.diff;
-      var html = '';
-      html += '<div class="diff-section"><div class="diff-section-title added">+ Added (' + d.added.length + ')</div>';
-      d.added.length ? d.added.forEach(function(t) { html += '<div class="diff-table-chip added">+ ' + escapeHtml(t.name) + '</div>'; })
-        : (html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>');
-      html += '</div>';
-      html += '<div class="diff-section"><div class="diff-section-title removed">- Removed (' + d.removed.length + ')</div>';
-      d.removed.length ? d.removed.forEach(function(t) { html += '<div class="diff-table-chip removed">- ' + escapeHtml(t.name) + '</div>'; })
-        : (html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>');
-      html += '</div>';
-      html += '<div class="diff-section"><div class="diff-section-title modified">~ Modified (' + d.modified.length + ')</div>';
-      d.modified.forEach(function(m) {
-        html += '<div class="diff-modified-table"><div class="diff-table-name">~ ' + escapeHtml(m.name) + '</div>';
-        (m.columns || []).forEach(function(c) {
-          var sym = c.type === 'added' ? '+' : c.type === 'removed' ? '-' : '~';
-          var extra = (c.oldType && c.newType) ? ' (' + escapeHtml(c.oldType) + ' -> ' + escapeHtml(c.newType) + ')' : '';
-          html += '<div class="diff-col diff-' + c.type + '">' + sym + ' ' + escapeHtml(c.name) + extra + '</div>';
-        });
-        html += '</div>';
-      });
-      if (!d.modified.length) html += '<span style="color:var(--text-muted);font-size:.8rem">None</span>';
-      html += '</div>';
-      html += '<details class="migration-details"><summary>Migration SQL</summary>';
-      html += '<button class="btn" style="margin:6px 0" data-copy-id="migrationSql">⎘ Copy SQL</button>';
-      html += '<pre class="code-block" id="migrationSql">' + escapeHtml(data.migration) + '</pre></details>';
-      el.innerHTML = html;
+      var title = mappings.length > 0 ? 'Mapped Comparison (' + mappings.map(function(m) { return m.left + ' ↔ ' + m.right; }).join(', ') + ')' : null;
+      renderDiffResults(el, data, title);
     } catch (e) {
       el.innerHTML = '<div style="color:var(--error)">' + escapeHtml(String(e)) + '</div>';
     }
@@ -2475,6 +2574,26 @@ export async function startServer(options: ServeOptions): Promise<void> {
         const index = loadIndex(SNAP_BASE_DIR);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ snapshots: index.snapshots }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      }
+      return;
+    }
+
+    // ── GET /api/snapshots/:id/tables — list table names in a snapshot ──────
+    if (url.match(/^\/api\/snapshots\/[^/]+\/tables$/) && req.method === 'GET') {
+      const ref = url.slice('/api/snapshots/'.length, url.length - '/tables'.length);
+      try {
+        const snap = loadSnapshot(SNAP_BASE_DIR, ref);
+        if (!snap) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'Snapshot not found: ' + ref }));
+          return;
+        }
+        const tables = snap.schema.tables.map((t: any) => t.name);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, tables }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
