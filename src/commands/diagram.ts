@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { Schema, DiagramFormat } from '../types';
 import { generateDiagram, generateMermaidCode } from '../core/generator';
-import { generateImage, ImageFormat } from '../core/imageGenerator';
+import { generateImage, ImageFormat, closeBrowser } from '../core/imageGenerator';
 
 interface DiagramOptions {
   schema: string;
@@ -33,12 +33,16 @@ export async function diagram(options: DiagramOptions) {
     // Pass raw Mermaid ER code (no Markdown wrapper) to the image renderer
     const mermaidCode = generateMermaidCode(schema);
 
-    await generateImage({
-      mermaidCode,
-      outputPath: options.output,
-      format: outputFormat as ImageFormat,
-    });
-    
+    try {
+      await generateImage({
+        mermaidCode,
+        outputPath: options.output,
+        format: outputFormat as ImageFormat,
+      });
+    } finally {
+      await closeBrowser();
+    }
+
     return;
   }
 

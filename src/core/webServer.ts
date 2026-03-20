@@ -2343,10 +2343,21 @@ function deleteConnection(index: number): boolean {
 
 // ─── HTTP Server ──────────────────────────────────────────────────────────────
 
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        req.destroy(new Error('Request body too large'));
+        reject(new Error('Request body too large'));
+        return;
+      }
+      body += chunk.toString();
+    });
     req.on('end', () => resolve(body));
     req.on('error', reject);
   });
@@ -2401,17 +2412,21 @@ export async function startServer(options: ServeOptions): Promise<void> {
       let body = '';
       req.on('data', chunk => { body += chunk; });
       req.on('end', async () => {
+        let adapter: any = null;
         try {
           const config = JSON.parse(body);
-          const adapter = createAdapter(config);
+          adapter = createAdapter(config);
           await adapter.connect();
           const databases = await adapter.getDatabases();
-          await adapter.disconnect();
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, databases }));
         } catch (err) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        } finally {
+          if (adapter) {
+            try { await adapter.disconnect(); } catch {}
+          }
         }
       });
       return;
@@ -2422,17 +2437,19 @@ export async function startServer(options: ServeOptions): Promise<void> {
       let body = '';
       req.on('data', chunk => { body += chunk; });
       req.on('end', async () => {
+        let newAdapter: any = null;
         try {
           const config = JSON.parse(body);
-          const adapter = createAdapter(config);
-          await adapter.connect();
+          newAdapter = createAdapter(config);
+          await newAdapter.connect();
           // Get table names for selection
-          const tableNames = await adapter.getTableNames();
-          // Store adapter and table names for later use
+          const tableNames = await newAdapter.getTableNames();
+          // Disconnect previous adapter before replacing
           if (currentAdapter) {
             try { await currentAdapter.disconnect(); } catch {}
           }
-          currentAdapter = adapter;
+          currentAdapter = newAdapter;
+          newAdapter = null; // Ownership transferred
           currentConfig = config;
           availableTableNames = tableNames;
           // Save to connection history
@@ -2440,6 +2457,10 @@ export async function startServer(options: ServeOptions): Promise<void> {
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, database: config.database || '(default)', tables: tableNames.length }));
         } catch (err) {
+          // Clean up new adapter if it was created but not stored
+          if (newAdapter) {
+            try { await newAdapter.disconnect(); } catch {}
+          }
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
         }
@@ -2460,13 +2481,17 @@ export async function startServer(options: ServeOptions): Promise<void> {
             return;
           }
           schema = await currentAdapter.extractSchemaForTables(selectedTables);
-          await currentAdapter.disconnect();
-          currentAdapter = null;
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, database: schema.database, tables: schema.tables.length }));
         } catch (err) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        } finally {
+          // Always disconnect and clean up after extraction (success or failure)
+          if (currentAdapter) {
+            try { await currentAdapter.disconnect(); } catch {}
+            currentAdapter = null;
+          }
         }
       });
       return;
@@ -2474,13 +2499,14 @@ export async function startServer(options: ServeOptions): Promise<void> {
 
     // ── GET /api/disconnect — clear current schema ───────────────────────────
     if (url === '/api/disconnect') {
+      const adapterToClose = currentAdapter;
       schema = null;
-      if (currentAdapter) {
-        currentAdapter.disconnect().catch(() => {});
-        currentAdapter = null;
-      }
+      currentAdapter = null;
       currentConfig = null;
       availableTableNames = [];
+      if (adapterToClose) {
+        adapterToClose.disconnect().catch(() => {});
+      }
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: true }));
       return;
@@ -2678,9 +2704,10 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── POST /api/fetch-schema — connect to a DB and return schema/table list ─
     if (url === '/api/fetch-schema' && req.method === 'POST') {
       readBody(req).then(async body => {
+        let adapter: any = null;
         try {
           const { config, tables: selectedTables } = JSON.parse(body);
-          const adapter = createAdapter(config);
+          adapter = createAdapter(config);
           await adapter.connect();
           let s: Schema;
           if (selectedTables && selectedTables.length > 0) {
@@ -2688,12 +2715,15 @@ export async function startServer(options: ServeOptions): Promise<void> {
           } else {
             s = await adapter.extractSchema();
           }
-          await adapter.disconnect();
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, schema: s }));
         } catch (err) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        } finally {
+          if (adapter) {
+            try { await adapter.disconnect(); } catch {}
+          }
         }
       });
       return;
@@ -2702,17 +2732,21 @@ export async function startServer(options: ServeOptions): Promise<void> {
     // ── POST /api/fetch-tables — connect and return table name list ───────────
     if (url === '/api/fetch-tables' && req.method === 'POST') {
       readBody(req).then(async body => {
+        let adapter: any = null;
         try {
           const config = JSON.parse(body);
-          const adapter = createAdapter(config);
+          adapter = createAdapter(config);
           await adapter.connect();
           const tableNames = await adapter.getTableNames();
-          await adapter.disconnect();
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true, tables: tableNames }));
         } catch (err) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        } finally {
+          if (adapter) {
+            try { await adapter.disconnect(); } catch {}
+          }
         }
       });
       return;
@@ -2726,6 +2760,9 @@ export async function startServer(options: ServeOptions): Promise<void> {
           // params.left:  { source: 'current'|'snapshot'|'connection', snapshotId?, config?, tables? }
           // params.right: same
           // params.tableMapping?: [{left: 'tblA', right: 'tblB'}, ...]
+
+          // Track adapters created during resolveSchema so we can clean up on error
+          const adaptersToCleanup: any[] = [];
 
           const resolveSchema = async (side: any): Promise<Schema> => {
             if (side.source === 'current') {
@@ -2747,6 +2784,7 @@ export async function startServer(options: ServeOptions): Promise<void> {
               return s;
             } else if (side.source === 'connection') {
               const adapter = createAdapter(side.config);
+              adaptersToCleanup.push(adapter);
               await adapter.connect();
               let s: Schema;
               if (side.tables && side.tables.length > 0) {
@@ -2760,8 +2798,18 @@ export async function startServer(options: ServeOptions): Promise<void> {
             throw new Error('Invalid source: ' + side.source);
           };
 
-          let s1 = await resolveSchema(params.left);
-          let s2 = await resolveSchema(params.right);
+          let s1: Schema;
+          let s2: Schema;
+          try {
+            s1 = await resolveSchema(params.left);
+            s2 = await resolveSchema(params.right);
+          } catch (resolveErr) {
+            // Ensure all adapters are disconnected on error
+            for (const a of adaptersToCleanup) {
+              try { await a.disconnect(); } catch {}
+            }
+            throw resolveErr;
+          }
 
           // Apply table mapping: rename right-side tables to match left-side names for comparison
           if (params.tableMapping && params.tableMapping.length > 0) {
@@ -2880,6 +2928,19 @@ export async function startServer(options: ServeOptions): Promise<void> {
   } catch {
     // ignore if can't open browser
   }
+
+  // Graceful shutdown handler
+  const shutdown = async () => {
+    console.log('\nShutting down...');
+    if (currentAdapter) {
+      try { await currentAdapter.disconnect(); } catch {}
+      currentAdapter = null;
+    }
+    server.close();
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
   // Keep running
   await new Promise<void>(() => {});

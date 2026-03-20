@@ -4,6 +4,9 @@ import * as path from 'path';
 import { BaseAdapter } from './base';
 import { Schema, Table, Column, Index, ForeignKey } from '../types';
 
+// Cache the SQL.js WASM module to avoid reloading it on every connection
+let cachedSqlJs: any = null;
+
 export class SQLiteAdapter extends BaseAdapter {
   private db: Database | null = null;
 
@@ -11,8 +14,11 @@ export class SQLiteAdapter extends BaseAdapter {
     if (!this.config.filename) {
       throw new Error('SQLite requires a filename');
     }
-    
-    const SQL = await initSqlJs();
+
+    if (!cachedSqlJs) {
+      cachedSqlJs = await initSqlJs();
+    }
+    const SQL = cachedSqlJs;
     
     // Check if file exists
     if (fs.existsSync(this.config.filename)) {
@@ -25,12 +31,6 @@ export class SQLiteAdapter extends BaseAdapter {
 
   async disconnect(): Promise<void> {
     if (this.db) {
-      // Save database to file before closing
-      if (this.config.filename) {
-        const data = this.db.export();
-        const buffer = Buffer.from(data);
-        fs.writeFileSync(this.config.filename, buffer);
-      }
       this.db.close();
       this.db = null;
     }
