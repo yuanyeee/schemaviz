@@ -13,10 +13,20 @@ interface ImageOptions {
 let browser: any = null;
 
 async function getBrowser(): Promise<any> {
+  if (browser) {
+    // Check if browser is still connected; if not, discard stale reference
+    if (!browser.isConnected()) {
+      browser = null;
+    }
+  }
   if (!browser) {
     browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    // Clear reference if the browser disconnects unexpectedly
+    browser.on('disconnected', () => {
+      browser = null;
     });
   }
   return browser;
@@ -36,10 +46,12 @@ export async function generateImage(options: ImageOptions): Promise<void> {
   
   const b = await getBrowser();
   const page = await b.newPage();
-  
+
   try {
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    
+    // Limit page memory usage
+    await page.setCacheEnabled(false);
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+
     // Wait for Mermaid to render
     await page.waitForSelector('svg', { timeout: 30000 });
     

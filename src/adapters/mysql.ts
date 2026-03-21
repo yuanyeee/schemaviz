@@ -12,6 +12,11 @@ export class MySQLAdapter extends BaseAdapter {
       database: this.config.database,
       user: this.config.user,
       password: this.config.password,
+      connectionLimit: 5,
+      waitForConnections: true,
+      connectTimeout: 10000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000,
     });
 
     // Test connection
