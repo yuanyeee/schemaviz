@@ -163,6 +163,32 @@ schemaviz serve [-s schema.json] [-p 3000] [-H localhost] [-w]
 - `-H, --host <host>`: バインドホスト（既定 `localhost`）
 - `-w, --watch`: リクエストごとにスキーマ再読込
 
+#### Web画面は含まれますか？
+
+はい。`serve` には以下の 2 つの画面があります。
+
+- **ログイン画面**（`-s` 未指定で起動時）
+  - DB 種別・接続情報を入力して接続
+- **ER 図画面**（接続成功後、または `-s` 指定で起動時）
+  - Mermaid / PlantUML 切替
+  - Validate / Generate / Snapshot / Diff パネル
+  - テーブル検索、詳細表示、SVG ダウンロード、テーマ切替
+
+#### すぐ試す
+
+```bash
+# 1) ビルド
+npm run build
+
+# 2) サンプルスキーマで Web UI 起動（ログインをスキップ）
+node dist/index.js serve -s schema.json -p 3000
+
+# 3) ブラウザでアクセス
+# http://localhost:3000
+```
+
+> 補足: `-s` を省略するとログイン画面から DB 接続して利用できます。
+
 ---
 
 ### `generate`
