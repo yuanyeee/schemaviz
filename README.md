@@ -333,6 +333,102 @@ npm run dev
 
 ---
 
+## English Guide (Quick Reference)
+
+SchemaViz is a TypeScript CLI for:
+
+- extracting DB schema (`extract`)
+- rendering ER diagrams (`diagram` / `serve`)
+- validating schema quality (`validate`)
+- diffing schemas and generating migration SQL (`diff`)
+- generating Prisma / TypeORM / GraphQL code (`generate`)
+- saving and browsing snapshots (`snapshot` / `history`)
+
+### Install
+
+```bash
+git clone https://github.com/yuanyeee/schemaviz.git
+cd schemaviz
+npm install
+npm run build
+```
+
+### Run CLI
+
+```bash
+node dist/index.js --help
+# or
+npm link
+schemaviz --help
+```
+
+### Common commands
+
+```bash
+schemaviz extract -c examples/postgresql.yaml -o schema.json
+schemaviz diagram -s schema.json -o er.md
+schemaviz validate -s schema.json
+schemaviz diff -s1 schema_old.json -s2 schema_new.json -m migration.sql
+schemaviz serve -s schema.json -p 3000
+schemaviz generate -s schema.json -f prisma -o schema.prisma
+schemaviz snapshot -s schema.json -t v1
+schemaviz history list
+```
+
+> Notes:
+> - Image export (`.png`, `.svg`, `.pdf`) uses Puppeteer and may require Chromium setup.
+> - Generated migration SQL is generic and may need manual adjustment for DB-specific dialects.
+
+---
+
+## 中文指南（快速参考）
+
+SchemaViz 是一个 TypeScript CLI，可用于：
+
+- 从数据库提取 Schema（`extract`）
+- 生成 ER 图（`diagram` / `serve`）
+- 做 Schema 规则校验（`validate`）
+- 对比两个 Schema 并生成迁移 SQL（`diff`）
+- 生成 Prisma / TypeORM / GraphQL 代码（`generate`）
+- 管理快照历史（`snapshot` / `history`）
+
+### 安装
+
+```bash
+git clone https://github.com/yuanyeee/schemaviz.git
+cd schemaviz
+npm install
+npm run build
+```
+
+### 运行方式
+
+```bash
+node dist/index.js --help
+# 或
+npm link
+schemaviz --help
+```
+
+### 常用命令
+
+```bash
+schemaviz extract -c examples/postgresql.yaml -o schema.json
+schemaviz diagram -s schema.json -o er.md
+schemaviz validate -s schema.json
+schemaviz diff -s1 schema_old.json -s2 schema_new.json -m migration.sql
+schemaviz serve -s schema.json -p 3000
+schemaviz generate -s schema.json -f prisma -o schema.prisma
+schemaviz snapshot -s schema.json -t v1
+schemaviz history list
+```
+
+> 说明：
+> - 图片导出（`.png` / `.svg` / `.pdf`）依赖 Puppeteer，部分环境需要额外配置 Chromium。
+> - 迁移 SQL 为通用模板，遇到特定数据库方言时可能需要手动调整。
+
+---
+
 ## 既知の注意点
 
 - `diff` の migration SQL は汎用テンプレートであり、すべての DB 方言・複雑な変更（制約詳細など）を完全には復元できません。
