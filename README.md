@@ -1,370 +1,215 @@
 # SchemaViz
 
-Database ER diagram generator and schema diff tool for developers.
+SchemaViz は、データベーススキーマを **抽出（extract）→可視化（diagram / serve）→検証（validate）→差分比較（diff）→コード生成（generate）→履歴管理（snapshot/history）** できる TypeScript 製 CLI ツールです。
 
-![npm version](https://img.shields.io/npm/v/schemaviz)
-![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+## 主な機能
 
-## Quick Setup
+- PostgreSQL / MySQL / SQLite / SQL Server からスキーマ抽出
+- Mermaid / PlantUML の ER 図生成
+- PNG / SVG / PDF 画像出力（Mermaid レンダリング経由）
+- スキーマ差分（追加・削除・変更）とマイグレーション SQL 生成
+- ベストプラクティス検証（エラー/警告/情報）
+- ブラウザ UI (`serve`) での対話的な ER 図閲覧
+- Prisma / TypeORM / GraphQL のコード生成
+- スナップショット保存と履歴操作（list/show/delete）
 
-```bash
-# 1. Clone
-git clone https://github.com/yuanyeee/schemaviz.git
-cd schemaviz
+---
 
-# 2. Install & Build
-npm install
-npm run build
+## 必要環境
 
-# 3. Use CLI
-./dist/index.js extract -c examples/postgresql.yaml -o schema.json
-./dist/index.js diagram -s schema.json -o er.md
-./dist/index.js diff -s1 schema1.json -s2 schema2.json
-```
+- Node.js 20 以上推奨
+- npm
+- TypeScript 実行環境（開発時は `npm install` で同梱依存を利用）
 
-## Features
+画像出力（`.png` / `.svg` / `.pdf`）には Puppeteer が使われます。実行環境に応じて Chromium の準備が必要になる場合があります。
 
-- 📊 **Generate ER diagrams** from database schema
-- 🔄 **Compare schemas** and show differences
-- 📝 **Generate migration scripts** with rollback support
-- 🖼️ **Export to multiple formats**: Mermaid, PlantUML, PNG, SVG, PDF
-- 🗄️ **Support multiple databases**: PostgreSQL, MySQL, SQLite, SQL Server
-- ✅ **Validate schema** against best practices (missing PKs, FK indexes, email uniqueness, etc.)
-- 🌐 **Interactive Web UI** — pan/zoom ER diagram, table search & detail view in browser
-- ⚙️ **Code generation** — Prisma schema, TypeORM entities, GraphQL SDL from schema
-- 📚 **Schema history** — snapshot versioning with tag-based diff and rollback
-- 🤖 **GitHub Actions integration** for automatic schema review on PRs
+---
 
-## Installation
+## インストール
+
+### 1) リポジトリから利用
 
 ```bash
-# Clone the repository
 git clone https://github.com/yuanyeee/schemaviz.git
 cd schemaviz
-
-# Install dependencies
 npm install
-
-# Build
 npm run build
 ```
 
-## Usage
+### 2) CLI として呼び出し
 
-> **Invoking the CLI**
->
-> After cloning and building, you can run commands in either of two ways:
-> ```bash
-> # Option A: direct path (always works)
-> ./dist/index.js <command>
->
-> # Option B: link globally once, then use the short alias
-> npm link
-> schemaviz <command>
-> ```
-> The examples below use `schemaviz` for readability (Option B).
+```bash
+# 直接実行
+node dist/index.js --help
 
-### Typical Workflow
-
-```
-Database ──extract──► schema.json ──diagram──► er.md / er.png
-                           │
-                           ├──validate──► best-practice report
-                           ├──diff──────► migration SQL
-                           ├──generate──► Prisma / TypeORM / GraphQL
-                           └──snapshot──► version history
+# あるいはリンクして短縮コマンド化
+npm link
+schemaviz --help
 ```
 
 ---
 
-### `extract` — Extract Schema from Database
-
-Connects to a database and saves the schema to a JSON file.
+## クイックスタート
 
 ```bash
-schemaviz extract -c <config> -o <output>
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `-c, --config <path>` | Yes | Database config file (YAML or JSON) |
-| `-o, --output <path>` | Yes | Output schema file path (JSON) |
-
-```bash
-# PostgreSQL
+# 1. スキーマ抽出
 schemaviz extract -c examples/postgresql.yaml -o schema.json
 
-# SQLite
-schemaviz extract -c examples/sqlite.yaml -o schema.json
-```
-
----
-
-### `diagram` — Generate ER Diagram
-
-Generates an ER diagram from a schema JSON file.
-
-```bash
-schemaviz diagram -s <schema> [options]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `-s, --schema <path>` | (required) | Schema file path (JSON) |
-| `-f, --format <format>` | `mermaid` | Output format: `mermaid` or `plantuml` |
-| `-o, --output <path>` | — | Output file path (extension determines format) |
-
-The output format is determined by the file extension when using `-o`:
-
-| Extension | Format |
-|-----------|--------|
-| `.md` | Mermaid markdown |
-| `.puml` | PlantUML |
-| `.png` | PNG image (via Puppeteer) |
-| `.svg` | SVG vector image |
-| `.pdf` | PDF document |
-
-```bash
-# Mermaid markdown (default)
+# 2. ER 図生成（Mermaid Markdown）
 schemaviz diagram -s schema.json -o er.md
 
-# PlantUML
-schemaviz diagram -s schema.json -f plantuml -o er.puml
-
-# PNG / SVG / PDF (requires Chrome/Chromium)
-schemaviz diagram -s schema.json -o er.png
-schemaviz diagram -s schema.json -o er.svg
-schemaviz diagram -s schema.json -o er.pdf
-```
-
----
-
-### `diff` — Compare Two Schemas
-
-Compares two schema files and optionally generates migration SQL.
-
-```bash
-schemaviz diff -s1 <schema1> -s2 <schema2> [options]
-```
-
-| Option | Description |
-|--------|-------------|
-| `-s1, --schema1 <path>` | (required) First (old) schema file |
-| `-s2, --schema2 <path>` | (required) Second (new) schema file |
-| `-o, --output <path>` | Save diff result as JSON |
-| `-m, --migration <path>` | Save migration SQL to file |
-
-```bash
-# Show diff in terminal
-schemaviz diff -s1 schema_old.json -s2 schema_new.json
-
-# Generate migration SQL
-schemaviz diff -s1 schema_old.json -s2 schema_new.json -m migration.sql
-
-# Save diff as JSON and generate migration
-schemaviz diff -s1 schema_old.json -s2 schema_new.json -o diff.json -m migration.sql
-```
-
----
-
-### `validate` — Validate Schema
-
-Checks the schema against database best practices and reports issues.
-
-```bash
-schemaviz validate -s <schema> [options]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `-s, --schema <path>` | (required) | Schema file path (JSON) |
-| `-f, --format <format>` | `text` | Output format: `text` or `json` |
-| `-o, --output <path>` | — | Save report to file |
-| `--fail-on-warning` | `false` | Exit with code 1 if any warnings exist (useful in CI) |
-
-```bash
-# Print text report
+# 3. スキーマ検証
 schemaviz validate -s schema.json
 
-# Output as JSON (for CI parsing)
-schemaviz validate -s schema.json -f json
-
-# Fail CI pipeline on warnings
-schemaviz validate -s schema.json --fail-on-warning
-
-# Save report to file
-schemaviz validate -s schema.json -o report.txt
-```
-
-**Validation rules:**
-
-| Rule | Level | Description |
-|------|-------|-------------|
-| `no-primary-key` | Error | Table has no primary key |
-| `no-columns` | Error | Table has no columns |
-| `fk-missing-index` | Warning | Foreign key column has no index |
-| `email-not-unique` | Warning | `email` column has no unique index |
-| `id-column-missing-fk` | Warning | `*_id` column with no FK constraint |
-| `nullable-id-column` | Warning | ID column is nullable |
-| `duplicate-index` | Warning | Multiple indexes on the same columns |
-| `missing-timestamps` | Info | No `created_at`/`updated_at` columns |
-
----
-
-### `serve` — Interactive Web UI
-
-Starts a local web server with an interactive ER diagram viewer.
-
-```bash
-schemaviz serve [options]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `-s, --schema <path>` | — | Schema JSON to load directly (skips login UI) |
-| `-p, --port <port>` | `3000` | Port to listen on |
-| `-H, --host <host>` | `localhost` | Host to bind to |
-| `-w, --watch` | `false` | Reload schema on every request |
-
-**Method 1 — Connect via login screen (recommended)**
-
-```bash
-# Start server (opens http://localhost:3000 automatically)
-schemaviz serve
-
-# Custom port
-schemaviz serve -p 8080
-
-# Accessible from other machines on the network
-schemaviz serve -H 0.0.0.0 -p 3000
-```
-
-Enter your database connection details in the SSMS-style login dialog:
-
-| Field | Description |
-|-------|-------------|
-| Server type | PostgreSQL / MySQL / SQL Server / SQLite |
-| Server name | Hostname or IP (e.g. `localhost`) |
-| Port | Auto-filled by server type |
-| Authentication | Username and password |
-| Database | Target database name (optional) |
-
-Click **Connect** to view the ER diagram. Use the **Disconnect** button in the header to return to the login screen.
-
-**Method 2 — Load schema JSON directly (skips login)**
-
-```bash
-# Extract schema first
-schemaviz extract -c examples/postgresql.yaml -o schema.json
-
-# Start server with schema pre-loaded
-schemaviz serve -s schema.json
-
-# Auto-reload on file changes
-schemaviz serve -s schema.json --watch
-```
-
-**Web UI features:**
-
-- Login screen (SSMS-style)
-  - Switch between PostgreSQL / MySQL / SQL Server / SQLite
-  - Error message on connection failure
-  - Light/Dark theme toggle
-- ER diagram screen
-  - Zoom with mouse wheel (Ctrl+scroll) or buttons
-  - Table search sidebar (`Ctrl+K`)
-  - Click a table to view columns, indexes, and FK details
-  - Copy Mermaid code or download SVG
-  - Light/Dark theme toggle
-  - **Disconnect** button to return to login screen
-- **✔ Validate panel** — run best-practice checks, view issues by table and severity
-- **⚙ Generate panel** — generate Prisma / TypeORM / GraphQL code with one click and copy to clipboard
-- **📷 Snapshot panel** — save the current schema as a named snapshot, browse and delete snapshots
-- **⟺ Diff panel** — compare any two snapshots (or current schema vs snapshot), view added/removed/modified tables and migration SQL
-
----
-
-### `generate` — Code Generation
-
-Generates ORM schema or GraphQL SDL from the extracted schema.
-
-```bash
-schemaviz generate -s <schema> -f <format> [options]
-```
-
-| Option | Description |
-|--------|-------------|
-| `-s, --schema <path>` | (required) Schema file path (JSON) |
-| `-f, --format <format>` | (required) `prisma`, `typeorm`, or `graphql` |
-| `-o, --output <path>` | Output file or directory path |
-
-```bash
-# Prisma schema
-schemaviz generate -s schema.json -f prisma -o schema.prisma
-
-# TypeORM entity classes (outputs to directory)
-schemaviz generate -s schema.json -f typeorm -o ./entities
-
-# GraphQL SDL
-schemaviz generate -s schema.json -f graphql -o schema.graphql
+# 4. 差分比較（同時に migration.sql 出力）
+schemaviz diff -s1 schema_old.json -s2 schema_new.json -m migration.sql
 ```
 
 ---
 
-### `snapshot` / `history` — Schema Versioning
-
-Save schema snapshots and compare across versions.
+## コマンド一覧
 
 ```bash
-# Save a snapshot with an optional tag
-schemaviz snapshot -s schema.json -t "v1.0-release"
-
-# Save to a custom directory
-schemaviz snapshot -s schema.json -t "v1.0-release" -d ./snapshots
+schemaviz <command> [options]
 ```
 
-| `snapshot` option | Default | Description |
-|-------------------|---------|-------------|
-| `-s, --schema <path>` | (required) | Schema file to snapshot |
-| `-t, --tag <tag>` | — | Human-readable label |
-| `-d, --dir <dir>` | `.` | Directory to store snapshots |
+### `extract`
+DB に接続して `Schema JSON` を生成します。
 
 ```bash
-# List all snapshots
-schemaviz history list
+schemaviz extract -c <config.(yaml|yml|json)> -o <schema.json>
+```
 
-# List as JSON
-schemaviz history list --json
+オプション:
 
-# Show snapshot detail (by tag or ID prefix)
-schemaviz history show v1.0-release
+- `-c, --config <path>`: DB 設定ファイル（必須）
+- `-o, --output <path>`: 出力先 JSON（必須）
 
-# Compare a snapshot to current schema
-schemaviz diff -s1 .schemaviz/snapshots/<id>.json -s2 schema.json
+---
 
-# Delete a snapshot
-schemaviz history delete v1.0-release
+### `diagram`
+Schema JSON から ER 図を生成します。
+
+```bash
+schemaviz diagram -s <schema.json> [-f mermaid|plantuml] [-o output]
+```
+
+オプション:
+
+- `-s, --schema <path>`: スキーマ JSON（必須）
+- `-f, --format <format>`: `mermaid`（既定）または `plantuml`
+- `-o, --output <path>`: 出力先
+
+出力拡張子が `.png` / `.svg` / `.pdf` の場合、画像として出力します（このとき Mermaid で描画）。
+
+---
+
+### `diff`
+2 つの Schema JSON を比較し、差分と migration SQL を扱います。
+
+```bash
+schemaviz diff -s1 <old.json> -s2 <new.json> [-o diff.json] [-m migration.sql]
+```
+
+オプション:
+
+- `-s1, --schema1 <path>`: 旧スキーマ（必須）
+- `-s2, --schema2 <path>`: 新スキーマ（必須）
+- `-o, --output <path>`: 差分 JSON 出力
+- `-m, --migration <path>`: migration SQL 出力
+
+`-m` を指定しない場合は migration SQL を標準出力に表示します。
+
+---
+
+### `validate`
+スキーマを静的チェックし、レポートを出力します。
+
+```bash
+schemaviz validate -s <schema.json> [-f text|json] [-o report] [--fail-on-warning]
+```
+
+オプション:
+
+- `-s, --schema <path>`: スキーマ JSON（必須）
+- `-f, --format <format>`: `text`（既定）または `json`
+- `-o, --output <path>`: レポート保存先
+- `--fail-on-warning`: 警告があれば終了コード 1
+
+主なチェックルール:
+
+- `no-primary-key`
+- `no-columns`
+- `fk-missing-index`
+- `email-not-unique`
+- `id-column-missing-fk`
+- `missing-timestamps`
+- `duplicate-index`
+- `nullable-id-column`
+
+---
+
+### `serve`
+ローカル Web UI を起動し、ER 図をインタラクティブに閲覧します。
+
+```bash
+schemaviz serve [-s schema.json] [-p 3000] [-H localhost] [-w]
+```
+
+オプション:
+
+- `-s, --schema <path>`: 起動時に読み込むスキーマ JSON（省略時は接続ログイン UI）
+- `-p, --port <port>`: ポート（既定 `3000`）
+- `-H, --host <host>`: バインドホスト（既定 `localhost`）
+- `-w, --watch`: リクエストごとにスキーマ再読込
+
+---
+
+### `generate`
+Schema JSON からコードを生成します。
+
+```bash
+schemaviz generate -s <schema.json> -f <prisma|typeorm|graphql> [-o output]
+```
+
+オプション:
+
+- `-s, --schema <path>`: スキーマ JSON（必須）
+- `-f, --format <format>`: `prisma` / `typeorm` / `graphql`（必須）
+- `-o, --output <path>`: 出力先
+
+フォーマット別既定出力先:
+
+- `prisma`: `schema.prisma`
+- `typeorm`: `./entities`
+- `graphql`: `schema.graphql`
+
+---
+
+### `snapshot` / `history`
+スキーマ履歴を保存・閲覧・削除します。
+
+```bash
+# 保存
+schemaviz snapshot -s schema.json [-t tag] [-d dir]
+
+# 一覧
+schemaviz history list [-d dir] [--json]
+
+# 詳細
+schemaviz history show <ref> [-d dir] [--json]
+
+# 削除
+schemaviz history delete <ref> [-d dir]
 ```
 
 ---
 
-### GitHub Actions Integration
+## 設定ファイル例
 
-Add schema diff and validation to your PR workflow by copying the provided workflows:
+`extract` の `--config` で使用する設定です。
 
-```bash
-cp -r .github/workflows/schema-diff.yml your-repo/.github/workflows/
-cp -r .github/workflows/schema-validate.yml your-repo/.github/workflows/
-```
-
-When a PR modifies `schema.json`, the bot automatically posts a comment with:
-- Validation results (errors, warnings, improvement suggestions)
-- Schema diff (added/removed/modified tables and columns)
-- Migration SQL (expandable)
-
-## Configuration
-
-### PostgreSQL
+### PostgreSQL (`examples/postgresql.yaml`)
 
 ```yaml
 type: postgresql
@@ -375,7 +220,7 @@ user: postgres
 password: mypassword
 ```
 
-### MySQL
+### MySQL (`examples/mysql.yaml`)
 
 ```yaml
 type: mysql
@@ -386,14 +231,15 @@ user: root
 password: mypassword
 ```
 
-### SQLite
+### SQLite (`examples/sqlite.yaml`)
 
 ```yaml
 type: sqlite
 filename: ./myapp.db
+database: sqlite
 ```
 
-### SQL Server
+### SQL Server (`examples/sqlserver.yaml`)
 
 ```yaml
 type: sqlserver
@@ -401,101 +247,73 @@ host: localhost
 port: 1433
 database: myapp
 user: sa
-password: mypassword
+password: yourStrong(!)Password
 ```
 
-## Commands
+---
 
-| Command | Description |
-|---------|-------------|
-| `extract` | Extract schema from database |
-| `diagram` | Generate ER diagram from schema |
-| `diff` | Compare two schemas |
-| `validate` | Validate schema against best practices |
-| `serve` | Interactive ER diagram in browser |
-| `generate` | Generate Prisma / TypeORM / GraphQL code |
-| `snapshot` | Save a schema snapshot |
-| `history list` | List all snapshots |
-| `history show <ref>` | Show a snapshot |
-| `history delete <ref>` | Delete a snapshot |
+## Schema JSON 形式
 
-### Diagram Output Formats
+```json
+{
+  "database": "mydb",
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "isForeignKey": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "users_pkey",
+          "columns": ["id"],
+          "isUnique": true
+        }
+      ],
+      "foreignKeys": []
+    }
+  ]
+}
+```
 
-| Format | Description |
-|--------|-------------|
-| `mermaid` | Mermaid markdown (default) |
-| `plantuml` | PlantUML format |
-| `.png` | PNG image (via Puppeteer) |
-| `.svg` | SVG vector image |
-| `.pdf` | PDF document |
+---
 
-## Development
+## GitHub Actions
+
+サンプル Workflow が同梱されています。
+
+- `.github/workflows/schema-validate.yml`
+- `.github/workflows/schema-diff.yml`
+
+必要に応じて自身のリポジトリへコピーして利用してください。
+
+---
+
+## 開発
 
 ```bash
-# Run tests
-npm test
-
-# Build
+npm install
 npm run build
-
-# Run in development mode
+npm test
 npm run dev
 ```
 
-## Project Structure
+---
 
-```
-schemaviz/
-├── src/
-│   ├── index.ts           # CLI entry point
-│   ├── types.ts           # TypeScript types
-│   ├── commands/          # CLI commands
-│   │   ├── extract.ts
-│   │   ├── diagram.ts
-│   │   ├── diff.ts
-│   │   ├── validate.ts
-│   │   ├── serve.ts
-│   │   ├── generate.ts
-│   │   └── snapshot.ts
-│   ├── core/
-│   │   ├── generator.ts      # Diagram generators (Mermaid / PlantUML)
-│   │   ├── imageGenerator.ts # Image export (PNG/SVG/PDF via Puppeteer)
-│   │   ├── validator.ts      # Schema validation rules
-│   │   ├── diff.ts           # Schema diff and migration SQL logic
-│   │   ├── webServer.ts      # Interactive Web UI server
-│   │   ├── history.ts        # Snapshot versioning
-│   │   └── codegen/
-│   │       ├── prisma.ts     # Prisma schema generator
-│   │       ├── typeorm.ts    # TypeORM entity generator
-│   │       └── graphql.ts    # GraphQL SDL generator
-│   └── adapters/          # Database adapters
-│       ├── base.ts
-│       ├── postgresql.ts
-│       ├── mysql.ts
-│       ├── sqlite.ts
-│       └── sqlserver.ts
-├── tests/                 # Test files
-├── examples/              # Configuration examples
-└── package.json
-```
+## 既知の注意点
 
-## Roadmap
+- `diff` の migration SQL は汎用テンプレートであり、すべての DB 方言・複雑な変更（制約詳細など）を完全には復元できません。
+- 画像出力は実行環境（CI, コンテナ, OS）によって追加セットアップが必要な場合があります。
 
-- [x] PostgreSQL support
-- [x] MySQL support
-- [x] SQLite support
-- [x] SQL Server support
-- [x] Mermaid export
-- [x] PlantUML export
-- [x] PNG/SVG/PDF export
-- [x] Schema validation (best practices linting)
-- [x] GitHub Actions for CI/CD (schema diff + validate on PRs)
-- [x] Interactive Web UI (schemaviz serve)
-- [x] Code generation: Prisma / TypeORM / GraphQL
-- [x] Schema history / snapshot versioning
-- [ ] VS Code extension
-- [ ] AI-powered schema optimization suggestions (Claude API)
+---
 
-## License
+## ライセンス
 
 MIT
