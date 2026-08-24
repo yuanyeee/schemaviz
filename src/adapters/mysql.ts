@@ -1,6 +1,7 @@
 import mysql, { Pool, RowDataPacket } from 'mysql2/promise';
 import { BaseAdapter } from './base';
-import { Schema, Table, Column, Index, ForeignKey } from '../types';
+import { Schema, Column, Index, ForeignKey } from '../types';
+import { isLengthType, isPrecisionType } from '../core/columnType';
 
 export class MySQLAdapter extends BaseAdapter {
   private pool: Pool | null = null;
@@ -38,19 +39,22 @@ export class MySQLAdapter extends BaseAdapter {
       WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
       ORDER BY SCHEMA_NAME
     `);
-    return rows.map((r: any) => r.SCHEMA_NAME);
+    return rows.map((r) => r.SCHEMA_NAME as string);
   }
 
   async getTableNames(): Promise<string[]> {
     if (!this.pool) throw new Error('Not connected');
-    const [rows] = await this.pool.query<RowDataPacket[]>(`
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `
       SELECT TABLE_NAME
       FROM information_schema.TABLES
       WHERE TABLE_SCHEMA = ?
         AND TABLE_TYPE = 'BASE TABLE'
       ORDER BY TABLE_NAME
-    `, [this.config.database]);
-    return rows.map((r: any) => r.TABLE_NAME);
+    `,
+      [this.config.database],
+    );
+    return rows.map((r) => r.TABLE_NAME as string);
   }
 
   async extractSchema(): Promise<Schema> {
@@ -58,49 +62,38 @@ export class MySQLAdapter extends BaseAdapter {
       throw new Error('Not connected to database');
     }
 
-    const tables = await this.getTables();
+    const tables = await this.buildTables(await this.getTableNames());
 
     return {
       database: this.config.database,
+      type: 'mysql',
       tables,
       generatedAt: new Date().toISOString(),
     };
   }
 
-  protected async getTables(): Promise<Table[]> {
+  async extractSchemaForTables(tableNames: string[]): Promise<Schema> {
     if (!this.pool) throw new Error('Not connected');
-
-    const [rows] = await this.pool.query<RowDataPacket[]>(`
-      SELECT TABLE_NAME 
-      FROM information_schema.TABLES 
-      WHERE TABLE_SCHEMA = ? 
-        AND TABLE_TYPE = 'BASE TABLE'
-      ORDER BY TABLE_NAME
-    `, [this.config.database]);
-
-    const tables: Table[] = [];
-    for (const row of rows) {
-      const tableName = row.TABLE_NAME;
-      const columns = await this.getColumns(tableName);
-      const indexes = await this.getIndexes(tableName);
-      const foreignKeys = await this.getForeignKeys(tableName);
-
-      tables.push({
-        name: tableName,
-        columns,
-        indexes,
-        foreignKeys,
-      });
-    }
-
-    return tables;
+    return {
+      database: this.config.database,
+      type: 'mysql',
+      tables: await this.buildTables(tableNames),
+      generatedAt: new Date().toISOString(),
+    };
   }
 
-  protected async getColumns(tableName: string): Promise<Column[]> {
+  // T3.2: all metadata is fetched for every requested table in ONE query per
+  // category (was 3 queries per table). Rows arrive ordered by table name and
+  // ordinal position, so grouping in encounter order preserves column order.
+  protected async getColumnsForTables(tableNames: string[]): Promise<Map<string, Column[]>> {
+    const map = new Map<string, Column[]>();
+    if (tableNames.length === 0) return map;
     if (!this.pool) throw new Error('Not connected');
 
-    const [rows] = await this.pool.query<RowDataPacket[]>(`
-      SELECT 
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `
+      SELECT
+        TABLE_NAME,
         COLUMN_NAME,
         DATA_TYPE,
         COLUMN_DEFAULT,
@@ -110,75 +103,136 @@ export class MySQLAdapter extends BaseAdapter {
         NUMERIC_PRECISION,
         NUMERIC_SCALE,
         EXTRA
-      FROM information_schema.COLUMNS 
-      WHERE TABLE_SCHEMA = ? 
-        AND TABLE_NAME = ?
-      ORDER BY ORDINAL_POSITION
-    `, [this.config.database, tableName]);
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ?
+        AND TABLE_NAME IN (?)
+      ORDER BY TABLE_NAME, ORDINAL_POSITION
+    `,
+      [this.config.database, tableNames],
+    );
 
-    return rows.map((row: any) => ({
-      name: row.COLUMN_NAME,
-      type: row.DATA_TYPE,
-      nullable: row.IS_NULLABLE === 'YES',
-      defaultValue: row.COLUMN_DEFAULT,
-      isPrimaryKey: row.COLUMN_KEY === 'PRI',
-      isForeignKey: row.COLUMN_KEY === 'MUL',
-    }));
-  }
-
-  protected async getIndexes(tableName: string): Promise<Index[]> {
-    if (!this.pool) throw new Error('Not connected');
-
-    const [rows] = await this.pool.query<RowDataPacket[]>(`
-      SHOW INDEX FROM \`${tableName}\`
-    `, []);
-
-    const indexMap = new Map<string, { name: string; columns: string[]; isUnique: boolean }>();
-
-    for (const row of rows as any[]) {
-      if (!indexMap.has(row.Key_name)) {
-        indexMap.set(row.Key_name, {
-          name: row.Key_name,
-          columns: [],
-          isUnique: row.Non_unique === 0,
-        });
-      }
-      indexMap.get(row.Key_name)!.columns.push(row.Column_name);
+    // CHARACTER_MAXIMUM_LENGTH is only meaningful for character/binary types,
+    // and NUMERIC_PRECISION/SCALE only for exact numerics (integers report them too).
+    for (const row of rows) {
+      const column: Column = {
+        name: row.COLUMN_NAME,
+        type: row.DATA_TYPE,
+        nullable: row.IS_NULLABLE === 'YES',
+        defaultValue: row.COLUMN_DEFAULT ?? undefined,
+        isPrimaryKey: row.COLUMN_KEY === 'PRI',
+        isForeignKey: row.COLUMN_KEY === 'MUL',
+        length:
+          isLengthType(row.DATA_TYPE) && row.CHARACTER_MAXIMUM_LENGTH != null
+            ? row.CHARACTER_MAXIMUM_LENGTH
+            : undefined,
+        precision:
+          isPrecisionType(row.DATA_TYPE) && row.NUMERIC_PRECISION != null
+            ? row.NUMERIC_PRECISION
+            : undefined,
+        scale:
+          isPrecisionType(row.DATA_TYPE) && row.NUMERIC_SCALE != null
+            ? row.NUMERIC_SCALE
+            : undefined,
+      };
+      const list = map.get(row.TABLE_NAME as string);
+      if (list) list.push(column);
+      else map.set(row.TABLE_NAME as string, [column]);
     }
-
-    return Array.from(indexMap.values());
+    return map;
   }
 
-  protected async getForeignKeys(tableName: string): Promise<ForeignKey[]> {
+  protected async getIndexesForTables(tableNames: string[]): Promise<Map<string, Index[]>> {
+    const map = new Map<string, Index[]>();
+    if (tableNames.length === 0) return map;
     if (!this.pool) throw new Error('Not connected');
 
-    const [rows] = await this.pool.query<RowDataPacket[]>(`
-      SELECT 
+    // information_schema.STATISTICS carries the same data as SHOW INDEX
+    // (Key_name/Non_unique/Column_name, ordered by SEQ_IN_INDEX) but can be
+    // queried for all tables at once.
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `
+      SELECT
+        TABLE_NAME,
+        INDEX_NAME AS Key_name,
+        NON_UNIQUE AS Non_unique,
+        COLUMN_NAME AS Column_name
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = ?
+        AND TABLE_NAME IN (?)
+      ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
+    `,
+      [this.config.database, tableNames],
+    );
+
+    const perTable = new Map<string, Map<string, Index>>();
+    for (const row of rows) {
+      const tableName = row.TABLE_NAME as string;
+      let byIndex = perTable.get(tableName);
+      if (!byIndex) {
+        byIndex = new Map<string, Index>();
+        perTable.set(tableName, byIndex);
+      }
+      let idx = byIndex.get(row.Key_name);
+      if (!idx) {
+        idx = { name: row.Key_name, columns: [], isUnique: row.Non_unique === 0 };
+        byIndex.set(row.Key_name, idx);
+      }
+      idx.columns.push(row.Column_name);
+    }
+    for (const [tableName, byIndex] of perTable) {
+      map.set(tableName, Array.from(byIndex.values()));
+    }
+    return map;
+  }
+
+  protected async getForeignKeysForTables(
+    tableNames: string[],
+  ): Promise<Map<string, ForeignKey[]>> {
+    const map = new Map<string, ForeignKey[]>();
+    if (tableNames.length === 0) return map;
+    if (!this.pool) throw new Error('Not connected');
+
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `
+      SELECT
+        TABLE_NAME,
         CONSTRAINT_NAME,
         COLUMN_NAME,
         REFERENCED_TABLE_NAME,
         REFERENCED_COLUMN_NAME
       FROM information_schema.KEY_COLUMN_USAGE
-      WHERE TABLE_SCHEMA = ? 
-        AND TABLE_NAME = ?
+      WHERE TABLE_SCHEMA = ?
+        AND TABLE_NAME IN (?)
         AND REFERENCED_TABLE_NAME IS NOT NULL
-    `, [this.config.database, tableName]);
+      ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+    `,
+      [this.config.database, tableNames],
+    );
 
-    const fkMap = new Map<string, ForeignKey>();
-
-    for (const row of rows as any) {
-      if (!fkMap.has(row.CONSTRAINT_NAME)) {
-        fkMap.set(row.CONSTRAINT_NAME, {
+    const perTable = new Map<string, Map<string, ForeignKey>>();
+    for (const row of rows) {
+      const tableName = row.TABLE_NAME as string;
+      let byFk = perTable.get(tableName);
+      if (!byFk) {
+        byFk = new Map<string, ForeignKey>();
+        perTable.set(tableName, byFk);
+      }
+      let fk = byFk.get(row.CONSTRAINT_NAME);
+      if (!fk) {
+        fk = {
           name: row.CONSTRAINT_NAME,
           columns: [],
           referencedTable: row.REFERENCED_TABLE_NAME,
           referencedColumns: [],
-        });
+        };
+        byFk.set(row.CONSTRAINT_NAME, fk);
       }
-      fkMap.get(row.CONSTRAINT_NAME)!.columns.push(row.COLUMN_NAME);
-      fkMap.get(row.CONSTRAINT_NAME)!.referencedColumns.push(row.REFERENCED_COLUMN_NAME);
+      fk.columns.push(row.COLUMN_NAME);
+      fk.referencedColumns.push(row.REFERENCED_COLUMN_NAME);
     }
-
-    return Array.from(fkMap.values());
+    for (const [tableName, byFk] of perTable) {
+      map.set(tableName, Array.from(byFk.values()));
+    }
+    return map;
   }
 }

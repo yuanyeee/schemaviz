@@ -76,7 +76,7 @@ export function generatePlantUML(schema: Schema): string {
     lines.push(`entity "${table.name}" as ${table.name} {`);
 
     // Primary key section (above the -- separator)
-    const pkCols = table.columns.filter(c => c.isPrimaryKey);
+    const pkCols = table.columns.filter((c) => c.isPrimaryKey);
     for (const col of pkCols) {
       const fkStereotype = col.isForeignKey ? ' <<FK>>' : '';
       lines.push(`  *${col.name} : ${col.type} <<PK>>${fkStereotype}`);
@@ -86,7 +86,7 @@ export function generatePlantUML(schema: Schema): string {
     lines.push('  --');
 
     // Non-PK columns
-    const otherCols = table.columns.filter(c => !c.isPrimaryKey);
+    const otherCols = table.columns.filter((c) => !c.isPrimaryKey);
     for (const col of otherCols) {
       const required = col.nullable ? '' : '*';
       const fkStereotype = col.isForeignKey ? ' <<FK>>' : '';

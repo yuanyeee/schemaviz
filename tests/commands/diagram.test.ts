@@ -8,8 +8,20 @@ describe('Diagram Command', () => {
         {
           name: 'users',
           columns: [
-            { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-            { name: 'email', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
+            {
+              name: 'id',
+              type: 'INTEGER',
+              nullable: false,
+              isPrimaryKey: true,
+              isForeignKey: false,
+            },
+            {
+              name: 'email',
+              type: 'VARCHAR(255)',
+              nullable: false,
+              isPrimaryKey: false,
+              isForeignKey: false,
+            },
           ],
           indexes: [],
           foreignKeys: [],
@@ -17,12 +29,29 @@ describe('Diagram Command', () => {
         {
           name: 'posts',
           columns: [
-            { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-            { name: 'user_id', type: 'INTEGER', nullable: false, isPrimaryKey: false, isForeignKey: true },
+            {
+              name: 'id',
+              type: 'INTEGER',
+              nullable: false,
+              isPrimaryKey: true,
+              isForeignKey: false,
+            },
+            {
+              name: 'user_id',
+              type: 'INTEGER',
+              nullable: false,
+              isPrimaryKey: false,
+              isForeignKey: true,
+            },
           ],
           indexes: [],
           foreignKeys: [
-            { name: 'posts_user_fk', columns: ['user_id'], referencedTable: 'users', referencedColumns: ['id'] },
+            {
+              name: 'posts_user_fk',
+              columns: ['user_id'],
+              referencedTable: 'users',
+              referencedColumns: ['id'],
+            },
           ],
         },
       ],

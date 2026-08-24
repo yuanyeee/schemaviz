@@ -12,11 +12,41 @@ const schema: Schema = {
       name: 'users',
       columns: [
         { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-        { name: 'email', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
-        { name: 'name', type: 'VARCHAR(100)', nullable: true, isPrimaryKey: false, isForeignKey: false },
-        { name: 'is_active', type: 'BOOLEAN', nullable: false, isPrimaryKey: false, isForeignKey: false },
-        { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
-        { name: 'updated_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+        {
+          name: 'email',
+          type: 'VARCHAR(255)',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
+        {
+          name: 'name',
+          type: 'VARCHAR(100)',
+          nullable: true,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
+        {
+          name: 'is_active',
+          type: 'BOOLEAN',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
+        {
+          name: 'created_at',
+          type: 'TIMESTAMP',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
+        {
+          name: 'updated_at',
+          type: 'TIMESTAMP',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
       ],
       indexes: [
         { name: 'users_pkey', columns: ['id'], isUnique: true },
@@ -28,17 +58,40 @@ const schema: Schema = {
       name: 'posts',
       columns: [
         { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-        { name: 'user_id', type: 'INTEGER', nullable: false, isPrimaryKey: false, isForeignKey: true },
-        { name: 'title', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
+        {
+          name: 'user_id',
+          type: 'INTEGER',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: true,
+        },
+        {
+          name: 'title',
+          type: 'VARCHAR(255)',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
         { name: 'content', type: 'TEXT', nullable: true, isPrimaryKey: false, isForeignKey: false },
-        { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+        {
+          name: 'created_at',
+          type: 'TIMESTAMP',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
       ],
       indexes: [
         { name: 'posts_pkey', columns: ['id'], isUnique: true },
         { name: 'idx_posts_user_id', columns: ['user_id'], isUnique: false },
       ],
       foreignKeys: [
-        { name: 'posts_user_fk', columns: ['user_id'], referencedTable: 'users', referencedColumns: ['id'] },
+        {
+          name: 'posts_user_fk',
+          columns: ['user_id'],
+          referencedTable: 'users',
+          referencedColumns: ['id'],
+        },
       ],
     },
   ],
@@ -144,8 +197,8 @@ describe('TypeORM Entity Generator', () => {
   it('generates barrel index.ts with all exports', () => {
     const files = generateTypeOrmEntities(schema);
     const index = files.get('index.ts')!;
-    expect(index).toContain("export { Users }");
-    expect(index).toContain("export { Posts }");
+    expect(index).toContain('export { Users }');
+    expect(index).toContain('export { Posts }');
   });
 });
 
@@ -201,5 +254,82 @@ describe('GraphQL Schema Generator', () => {
     expect(result).toContain('schema {');
     expect(result).toContain('query: Query');
     expect(result).toContain('mutation: Mutation');
+  });
+});
+
+describe('Codegen with type parameters (T1.3)', () => {
+  // Schema extracted from PostgreSQL: base type names + separate length/precision/scale.
+  const pgSchema: Schema = {
+    database: 'app',
+    type: 'postgresql',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    tables: [
+      {
+        name: 'products',
+        columns: [
+          { name: 'id', type: 'integer', nullable: false, isPrimaryKey: true, isForeignKey: false },
+          {
+            name: 'name',
+            type: 'character varying',
+            length: 255,
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
+          {
+            name: 'price',
+            type: 'numeric',
+            precision: 10,
+            scale: 2,
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
+          {
+            name: 'created_at',
+            type: 'timestamp with time zone',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
+        ],
+        indexes: [{ name: 'products_pkey', columns: ['id'], isUnique: true }],
+        foreignKeys: [],
+      },
+    ],
+  };
+
+  it('prisma maps PG character varying to String with @db.VarChar(length)', () => {
+    const result = generatePrismaSchema(pgSchema);
+    expect(result).toMatch(/name\s+String\s+@db\.VarChar\(255\)/);
+  });
+
+  it('prisma maps numeric with precision/scale to Decimal with @db.Decimal', () => {
+    const result = generatePrismaSchema(pgSchema);
+    expect(result).toMatch(/price\s+Decimal\s+@db\.Decimal\(10, 2\)/);
+  });
+
+  it('prisma maps timestamp with time zone to DateTime', () => {
+    const result = generatePrismaSchema(pgSchema);
+    // field is camelCased (createdAt) with the original name preserved via @map
+    expect(result).toMatch(/createdAt\s+DateTime\s+@map\("created_at"\)/);
+  });
+
+  it('prisma omits native type attributes when the dialect is unknown', () => {
+    const result = generatePrismaSchema({ ...pgSchema, type: undefined });
+    expect(result).not.toContain('@db.');
+  });
+
+  it('typeorm emits length/precision/scale column options', () => {
+    const files = generateTypeOrmEntities(pgSchema);
+    const entity = files.get('Products.ts')!;
+    expect(entity).toContain("type: 'varchar', length: 255");
+    expect(entity).toContain("type: 'numeric', precision: 10, scale: 2");
+  });
+
+  it('graphql maps PG canonical types', () => {
+    const result = generateGraphQLSchema(pgSchema);
+    expect(result).toContain('name: String!');
+    expect(result).toContain('price: Float!');
   });
 });

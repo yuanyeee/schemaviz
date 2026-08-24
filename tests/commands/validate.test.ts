@@ -22,8 +22,20 @@ describe('validateSchema', () => {
         name: 'users',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-          { name: 'email', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
-          { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'email',
+            type: 'VARCHAR(255)',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
+          {
+            name: 'created_at',
+            type: 'TIMESTAMP',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
         indexes: [
           { name: 'users_pkey', columns: ['id'], isUnique: true },
@@ -43,8 +55,20 @@ describe('validateSchema', () => {
       makeTable({
         name: 'no_pk',
         columns: [
-          { name: 'name', type: 'VARCHAR(100)', nullable: true, isPrimaryKey: false, isForeignKey: false },
-          { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'name',
+            type: 'VARCHAR(100)',
+            nullable: true,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
+          {
+            name: 'created_at',
+            type: 'TIMESTAMP',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
       }),
     ]);
@@ -52,19 +76,17 @@ describe('validateSchema', () => {
     const result = validateSchema(schema);
     expect(result.errorCount).toBeGreaterThan(0);
     expect(result.passed).toBe(false);
-    const issue = result.issues.find(i => i.rule === 'no-primary-key');
+    const issue = result.issues.find((i) => i.rule === 'no-primary-key');
     expect(issue).toBeDefined();
     expect(issue?.level).toBe('error');
     expect(issue?.table).toBe('no_pk');
   });
 
   it('detects table with no columns (error)', () => {
-    const schema = makeSchema([
-      makeTable({ name: 'empty_table' }),
-    ]);
+    const schema = makeSchema([makeTable({ name: 'empty_table' })]);
 
     const result = validateSchema(schema);
-    const issue = result.issues.find(i => i.rule === 'no-columns');
+    const issue = result.issues.find((i) => i.rule === 'no-columns');
     expect(issue).toBeDefined();
     expect(issue?.level).toBe('error');
   });
@@ -75,21 +97,38 @@ describe('validateSchema', () => {
         name: 'posts',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-          { name: 'user_id', type: 'INTEGER', nullable: false, isPrimaryKey: false, isForeignKey: true },
-          { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'user_id',
+            type: 'INTEGER',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: true,
+          },
+          {
+            name: 'created_at',
+            type: 'TIMESTAMP',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
         indexes: [
           { name: 'posts_pkey', columns: ['id'], isUnique: true },
           // No index on user_id
         ],
         foreignKeys: [
-          { name: 'posts_user_fk', columns: ['user_id'], referencedTable: 'users', referencedColumns: ['id'] },
+          {
+            name: 'posts_user_fk',
+            columns: ['user_id'],
+            referencedTable: 'users',
+            referencedColumns: ['id'],
+          },
         ],
       }),
     ]);
 
     const result = validateSchema(schema);
-    const issue = result.issues.find(i => i.rule === 'fk-missing-index');
+    const issue = result.issues.find((i) => i.rule === 'fk-missing-index');
     expect(issue).toBeDefined();
     expect(issue?.level).toBe('warning');
     expect(issue?.column).toBe('user_id');
@@ -101,21 +140,38 @@ describe('validateSchema', () => {
         name: 'posts',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-          { name: 'user_id', type: 'INTEGER', nullable: false, isPrimaryKey: false, isForeignKey: true },
-          { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'user_id',
+            type: 'INTEGER',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: true,
+          },
+          {
+            name: 'created_at',
+            type: 'TIMESTAMP',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
         indexes: [
           { name: 'posts_pkey', columns: ['id'], isUnique: true },
           { name: 'idx_posts_user_id', columns: ['user_id'], isUnique: false },
         ],
         foreignKeys: [
-          { name: 'posts_user_fk', columns: ['user_id'], referencedTable: 'users', referencedColumns: ['id'] },
+          {
+            name: 'posts_user_fk',
+            columns: ['user_id'],
+            referencedTable: 'users',
+            referencedColumns: ['id'],
+          },
         ],
       }),
     ]);
 
     const result = validateSchema(schema);
-    const issue = result.issues.find(i => i.rule === 'fk-missing-index');
+    const issue = result.issues.find((i) => i.rule === 'fk-missing-index');
     expect(issue).toBeUndefined();
   });
 
@@ -125,8 +181,20 @@ describe('validateSchema', () => {
         name: 'users',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-          { name: 'email', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
-          { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'email',
+            type: 'VARCHAR(255)',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
+          {
+            name: 'created_at',
+            type: 'TIMESTAMP',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
         indexes: [
           { name: 'users_pkey', columns: ['id'], isUnique: true },
@@ -136,7 +204,7 @@ describe('validateSchema', () => {
     ]);
 
     const result = validateSchema(schema);
-    const issue = result.issues.find(i => i.rule === 'email-not-unique');
+    const issue = result.issues.find((i) => i.rule === 'email-not-unique');
     expect(issue).toBeDefined();
     expect(issue?.level).toBe('warning');
   });
@@ -147,18 +215,28 @@ describe('validateSchema', () => {
         name: 'orders',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-          { name: 'customer_id', type: 'INTEGER', nullable: false, isPrimaryKey: false, isForeignKey: false },
-          { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'customer_id',
+            type: 'INTEGER',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
+          {
+            name: 'created_at',
+            type: 'TIMESTAMP',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
-        indexes: [
-          { name: 'orders_pkey', columns: ['id'], isUnique: true },
-        ],
+        indexes: [{ name: 'orders_pkey', columns: ['id'], isUnique: true }],
         foreignKeys: [],
       }),
     ]);
 
     const result = validateSchema(schema);
-    const issue = result.issues.find(i => i.rule === 'id-column-missing-fk');
+    const issue = result.issues.find((i) => i.rule === 'id-column-missing-fk');
     expect(issue).toBeDefined();
     expect(issue?.level).toBe('warning');
     expect(issue?.column).toBe('customer_id');
@@ -170,16 +248,20 @@ describe('validateSchema', () => {
         name: 'products',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-          { name: 'name', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'name',
+            type: 'VARCHAR(255)',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
-        indexes: [
-          { name: 'products_pkey', columns: ['id'], isUnique: true },
-        ],
+        indexes: [{ name: 'products_pkey', columns: ['id'], isUnique: true }],
       }),
     ]);
 
     const result = validateSchema(schema);
-    const issue = result.issues.find(i => i.rule === 'missing-timestamps');
+    const issue = result.issues.find((i) => i.rule === 'missing-timestamps');
     expect(issue).toBeDefined();
     expect(issue?.level).toBe('info');
   });
@@ -190,8 +272,20 @@ describe('validateSchema', () => {
         name: 'items',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-          { name: 'code', type: 'VARCHAR(50)', nullable: false, isPrimaryKey: false, isForeignKey: false },
-          { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'code',
+            type: 'VARCHAR(50)',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
+          {
+            name: 'created_at',
+            type: 'TIMESTAMP',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
         indexes: [
           { name: 'items_pkey', columns: ['id'], isUnique: true },
@@ -202,7 +296,7 @@ describe('validateSchema', () => {
     ]);
 
     const result = validateSchema(schema);
-    const issue = result.issues.find(i => i.rule === 'duplicate-index');
+    const issue = result.issues.find((i) => i.rule === 'duplicate-index');
     expect(issue).toBeDefined();
     expect(issue?.level).toBe('warning');
   });
@@ -213,16 +307,20 @@ describe('validateSchema', () => {
         name: 'logs',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: true, isPrimaryKey: true, isForeignKey: false },
-          { name: 'created_at', type: 'TIMESTAMP', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'created_at',
+            type: 'TIMESTAMP',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
-        indexes: [
-          { name: 'logs_pkey', columns: ['id'], isUnique: true },
-        ],
+        indexes: [{ name: 'logs_pkey', columns: ['id'], isUnique: true }],
       }),
     ]);
 
     const result = validateSchema(schema);
-    const issue = result.issues.find(i => i.rule === 'nullable-id-column');
+    const issue = result.issues.find((i) => i.rule === 'nullable-id-column');
     expect(issue).toBeDefined();
     expect(issue?.level).toBe('warning');
   });

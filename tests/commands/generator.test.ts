@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { Schema } from '../../src/types';
-import { generateDiagram, generateMermaid, generateMermaidCode, generatePlantUML } from '../../src/core/generator';
+import {
+  generateDiagram,
+  generateMermaid,
+  generateMermaidCode,
+  generatePlantUML,
+} from '../../src/core/generator';
 
 const schema: Schema = {
   database: 'test_db',
@@ -9,8 +14,20 @@ const schema: Schema = {
       name: 'users',
       columns: [
         { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-        { name: 'email', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
-        { name: 'name', type: 'VARCHAR(100)', nullable: true, isPrimaryKey: false, isForeignKey: false },
+        {
+          name: 'email',
+          type: 'VARCHAR(255)',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
+        {
+          name: 'name',
+          type: 'VARCHAR(100)',
+          nullable: true,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
       ],
       indexes: [],
       foreignKeys: [],
@@ -19,13 +36,30 @@ const schema: Schema = {
       name: 'posts',
       columns: [
         { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-        { name: 'user_id', type: 'INTEGER', nullable: false, isPrimaryKey: false, isForeignKey: true },
-        { name: 'title', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
+        {
+          name: 'user_id',
+          type: 'INTEGER',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: true,
+        },
+        {
+          name: 'title',
+          type: 'VARCHAR(255)',
+          nullable: false,
+          isPrimaryKey: false,
+          isForeignKey: false,
+        },
         { name: 'body', type: 'TEXT', nullable: true, isPrimaryKey: false, isForeignKey: false },
       ],
       indexes: [],
       foreignKeys: [
-        { name: 'posts_user_fk', columns: ['user_id'], referencedTable: 'users', referencedColumns: ['id'] },
+        {
+          name: 'posts_user_fk',
+          columns: ['user_id'],
+          referencedTable: 'users',
+          referencedColumns: ['id'],
+        },
       ],
     },
   ],
@@ -148,8 +182,8 @@ describe('generatePlantUML', () => {
     const puml = generatePlantUML(schema);
     // name and body are nullable — should not have * prefix
     const lines = puml.split('\n');
-    const nameLine = lines.find(l => l.includes(' name '));
-    const bodyLine = lines.find(l => l.includes(' body '));
+    const nameLine = lines.find((l) => l.includes(' name '));
+    const bodyLine = lines.find((l) => l.includes(' body '));
     expect(nameLine).toBeDefined();
     expect(nameLine).not.toMatch(/\*name/);
     expect(bodyLine).toBeDefined();
@@ -202,6 +236,6 @@ describe('generateDiagram', () => {
   });
 
   it('throws on unsupported format', () => {
-    expect(() => generateDiagram(schema, 'unknown' as any)).toThrow('Unsupported format');
+    expect(() => generateDiagram(schema, 'unknown' as never)).toThrow('Unsupported format');
   });
 });

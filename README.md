@@ -9,3 +9,10 @@ Language-specific READMEs are available below:
 ---
 
 If you are not sure which one to read first, start with Japanese documentation: [README.ja.md](./README.ja.md).
+
+---
+
+## 開発ドキュメント
+
+- [ソース分析レポート](./docs/ANALYSIS-REPORT.md)
+- [実装プラン(他セッション向け)](./docs/IMPLEMENTATION-PLAN.md)

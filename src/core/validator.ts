@@ -1,4 +1,4 @@
-import { Schema, Table, Column, Index, ForeignKey } from '../types';
+import { Schema, Table } from '../types';
 
 export type IssueLevel = 'error' | 'warning' | 'info';
 
@@ -30,9 +30,9 @@ export function validateSchema(schema: Schema): ValidationResult {
     issues.push(...validateTable(table));
   }
 
-  const errorCount = issues.filter(i => i.level === 'error').length;
-  const warningCount = issues.filter(i => i.level === 'warning').length;
-  const infoCount = issues.filter(i => i.level === 'info').length;
+  const errorCount = issues.filter((i) => i.level === 'error').length;
+  const warningCount = issues.filter((i) => i.level === 'warning').length;
+  const infoCount = issues.filter((i) => i.level === 'info').length;
 
   return {
     schema: schema.database,
@@ -61,8 +61,8 @@ function validateTable(table: Table): ValidationIssue[] {
 
 function checkNoPrimaryKey(table: Table): ValidationIssue[] {
   const hasPK =
-    table.columns.some(c => c.isPrimaryKey) ||
-    table.indexes.some(i => i.isUnique && i.columns.length > 0 && i.name.includes('pkey'));
+    table.columns.some((c) => c.isPrimaryKey) ||
+    table.indexes.some((i) => i.isUnique && i.columns.length > 0 && i.name.includes('pkey'));
 
   if (!hasPK) {
     return [
@@ -71,7 +71,8 @@ function checkNoPrimaryKey(table: Table): ValidationIssue[] {
         table: table.name,
         rule: 'no-primary-key',
         message: `テーブル "${table.name}" に主キーがありません`,
-        suggestion: 'id 列を INTEGER PRIMARY KEY として追加するか、既存の列に主キー制約を設定してください',
+        suggestion:
+          'id 列を INTEGER PRIMARY KEY として追加するか、既存の列に主キー制約を設定してください',
       },
     ];
   }
@@ -95,7 +96,7 @@ function checkNoColumns(table: Table): ValidationIssue[] {
 
 function checkForeignKeysMissingIndex(table: Table): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const indexedColumns = new Set(table.indexes.flatMap(i => i.columns));
+  const indexedColumns = new Set(table.indexes.flatMap((i) => i.columns));
 
   for (const fk of table.foreignKeys) {
     for (const col of fk.columns) {
@@ -119,9 +120,7 @@ function checkEmailWithoutUniqueIndex(table: Table): ValidationIssue[] {
 
   for (const col of table.columns) {
     if (col.name.toLowerCase() === 'email' || col.name.toLowerCase().endsWith('_email')) {
-      const hasUniqueIndex = table.indexes.some(
-        i => i.isUnique && i.columns.includes(col.name)
-      );
+      const hasUniqueIndex = table.indexes.some((i) => i.isUnique && i.columns.includes(col.name));
       if (!hasUniqueIndex) {
         issues.push({
           level: 'warning',
@@ -139,7 +138,7 @@ function checkEmailWithoutUniqueIndex(table: Table): ValidationIssue[] {
 
 function checkIdColumnsWithoutForeignKey(table: Table): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const fkColumns = new Set(table.foreignKeys.flatMap(fk => fk.columns));
+  const fkColumns = new Set(table.foreignKeys.flatMap((fk) => fk.columns));
 
   for (const col of table.columns) {
     if (
@@ -162,8 +161,8 @@ function checkIdColumnsWithoutForeignKey(table: Table): ValidationIssue[] {
 }
 
 function checkMissingTimestamps(table: Table): ValidationIssue[] {
-  const columnNames = new Set(table.columns.map(c => c.name.toLowerCase()));
-  const hasTimestamp = TIMESTAMP_COLUMNS.some(ts => columnNames.has(ts));
+  const columnNames = new Set(table.columns.map((c) => c.name.toLowerCase()));
+  const hasTimestamp = TIMESTAMP_COLUMNS.some((ts) => columnNames.has(ts));
 
   if (!hasTimestamp) {
     return [
@@ -172,7 +171,8 @@ function checkMissingTimestamps(table: Table): ValidationIssue[] {
         table: table.name,
         rule: 'missing-timestamps',
         message: `テーブル "${table.name}" に監査タイムスタンプ列 (created_at / updated_at) がありません`,
-        suggestion: 'created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP と updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP の追加を検討してください',
+        suggestion:
+          'created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP と updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP の追加を検討してください',
       },
     ];
   }
@@ -211,7 +211,8 @@ function checkNullableIdColumns(table: Table): ValidationIssue[] {
         column: col.name,
         rule: 'nullable-id-column',
         message: `ID列 "${table.name}.${col.name}" が NULL 許容になっています`,
-        suggestion: 'ID列は通常 NOT NULL にすべきです。意図的でない場合は NOT NULL 制約を追加してください',
+        suggestion:
+          'ID列は通常 NOT NULL にすべきです。意図的でない場合は NOT NULL 制約を追加してください',
       });
     }
   }

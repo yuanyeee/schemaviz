@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { saveSnapshot, saveSnapshotFromData, loadSnapshot, loadIndex, deleteSnapshot } from '../../src/core/history';
+import {
+  saveSnapshot,
+  saveSnapshotFromData,
+  loadSnapshot,
+  loadIndex,
+  deleteSnapshot,
+} from '../../src/core/history';
 import { Schema } from '../../src/types';
 
 function makeTmpDir(): string {
@@ -17,7 +23,13 @@ function writeSchemaFile(dir: string, filename = 'schema.json') {
         name: 'users',
         columns: [
           { name: 'id', type: 'INTEGER', nullable: false, isPrimaryKey: true, isForeignKey: false },
-          { name: 'email', type: 'VARCHAR(255)', nullable: false, isPrimaryKey: false, isForeignKey: false },
+          {
+            name: 'email',
+            type: 'VARCHAR(255)',
+            nullable: false,
+            isPrimaryKey: false,
+            isForeignKey: false,
+          },
         ],
         indexes: [],
         foreignKeys: [],

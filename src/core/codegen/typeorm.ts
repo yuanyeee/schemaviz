@@ -1,7 +1,10 @@
-import { Schema, Table, Column } from '../../types';
+import { Schema, Table } from '../../types';
 
 function sqlTypeToTs(sqlType: string): string {
-  const t = sqlType.toUpperCase().replace(/\(.*\)/, '').trim();
+  const t = sqlType
+    .toUpperCase()
+    .replace(/\(.*\)/, '')
+    .trim();
   const map: Record<string, string> = {
     INTEGER: 'number',
     INT: 'number',
@@ -22,11 +25,16 @@ function sqlTypeToTs(sqlType: string): string {
     VARCHAR: 'string',
     CHAR: 'string',
     NVARCHAR: 'string',
+    'CHARACTER VARYING': 'string',
+    CHARACTER: 'string',
     UUID: 'string',
     JSON: 'object',
     JSONB: 'object',
     TIMESTAMP: 'Date',
     TIMESTAMPTZ: 'Date',
+    'TIMESTAMP WITH TIME ZONE': 'Date',
+    'TIMESTAMP WITHOUT TIME ZONE': 'Date',
+    'DOUBLE PRECISION': 'number',
     DATE: 'Date',
     TIME: 'Date',
     DATETIME: 'Date',
@@ -38,7 +46,10 @@ function sqlTypeToTs(sqlType: string): string {
 }
 
 function sqlTypeToColumnType(sqlType: string): string {
-  const t = sqlType.toUpperCase().replace(/\(.*\)/, '').trim();
+  const t = sqlType
+    .toUpperCase()
+    .replace(/\(.*\)/, '')
+    .trim();
   const map: Record<string, string> = {
     INTEGER: 'int',
     INT: 'int',
@@ -59,11 +70,16 @@ function sqlTypeToColumnType(sqlType: string): string {
     VARCHAR: 'varchar',
     CHAR: 'char',
     NVARCHAR: 'nvarchar',
+    'CHARACTER VARYING': 'varchar',
+    CHARACTER: 'char',
     UUID: 'uuid',
     JSON: 'json',
     JSONB: 'jsonb',
     TIMESTAMP: 'timestamp',
     TIMESTAMPTZ: 'timestamptz',
+    'TIMESTAMP WITH TIME ZONE': 'timestamptz',
+    'TIMESTAMP WITHOUT TIME ZONE': 'timestamp',
+    'DOUBLE PRECISION': 'double precision',
     DATE: 'date',
     TIME: 'time',
     DATETIME: 'datetime',
@@ -96,7 +112,7 @@ function generateEntityClass(table: Table): string {
       else imports.add('PrimaryGeneratedColumn');
     }
   }
-  for (const fk of table.foreignKeys) {
+  if (table.foreignKeys.length > 0) {
     imports.add('ManyToOne');
     imports.add('JoinColumn');
   }
@@ -104,14 +120,14 @@ function generateEntityClass(table: Table): string {
     if (idx.isUnique) imports.add('Unique');
     if (!idx.isUnique) imports.add('Index');
   }
-  if (table.columns.some(c => c.name === 'created_at' || c.name === 'updated_at')) {
+  if (table.columns.some((c) => c.name === 'created_at' || c.name === 'updated_at')) {
     imports.add('CreateDateColumn');
     imports.add('UpdateDateColumn');
   }
 
   lines.push(`import { ${[...imports].join(', ')} } from 'typeorm';`);
   // Import related entities
-  const relatedEntities = new Set(table.foreignKeys.map(fk => toPascalCase(fk.referencedTable)));
+  const relatedEntities = new Set(table.foreignKeys.map((fk) => toPascalCase(fk.referencedTable)));
   for (const entity of relatedEntities) {
     lines.push(`import { ${entity} } from './${entity}';`);
   }
@@ -120,17 +136,15 @@ function generateEntityClass(table: Table): string {
   // Unique indexes as class decorators
   for (const idx of table.indexes) {
     if (idx.isUnique && idx.columns.length > 1) {
-      lines.push(`@Unique([${idx.columns.map(c => `'${toCamelCase(c)}'`).join(', ')}])`);
+      lines.push(`@Unique([${idx.columns.map((c) => `'${toCamelCase(c)}'`).join(', ')}])`);
     }
     if (!idx.isUnique && idx.columns.length > 0) {
-      lines.push(`@Index([${idx.columns.map(c => `'${toCamelCase(c)}'`).join(', ')}])`);
+      lines.push(`@Index([${idx.columns.map((c) => `'${toCamelCase(c)}'`).join(', ')}])`);
     }
   }
 
   lines.push(`@Entity('${table.name}')`);
   lines.push(`export class ${className} {`);
-
-  const fkColNames = new Set(table.foreignKeys.flatMap(fk => fk.columns));
 
   for (const col of table.columns) {
     const tsType = sqlTypeToTs(col.type);
@@ -140,13 +154,13 @@ function generateEntityClass(table: Table): string {
 
     // Skip auto-handled timestamp columns
     if (col.name === 'created_at') {
-      lines.push('  @CreateDateColumn({ name: \'created_at\' })');
+      lines.push("  @CreateDateColumn({ name: 'created_at' })");
       lines.push(`  ${fieldName}!: Date;`);
       lines.push('');
       continue;
     }
     if (col.name === 'updated_at') {
-      lines.push('  @UpdateDateColumn({ name: \'updated_at\' })');
+      lines.push("  @UpdateDateColumn({ name: 'updated_at' })");
       lines.push(`  ${fieldName}!: Date;`);
       lines.push('');
       continue;
@@ -154,7 +168,7 @@ function generateEntityClass(table: Table): string {
 
     if (col.isPrimaryKey) {
       if (colType === 'uuid') {
-        lines.push('  @PrimaryColumn(\'uuid\')');
+        lines.push("  @PrimaryColumn('uuid')");
       } else {
         lines.push('  @PrimaryGeneratedColumn()');
       }
@@ -162,11 +176,16 @@ function generateEntityClass(table: Table): string {
     } else {
       const colOpts: string[] = [`type: '${colType}'`];
       if (col.name !== fieldName) colOpts.push(`name: '${col.name}'`);
+      if (col.length != null) colOpts.push(`length: ${col.length}`);
+      if (col.precision != null) colOpts.push(`precision: ${col.precision}`);
+      if (col.scale != null) colOpts.push(`scale: ${col.scale}`);
       if (col.nullable) colOpts.push('nullable: true');
       if (col.defaultValue) colOpts.push(`default: ${col.defaultValue}`);
 
       // Check if unique
-      const isUnique = table.indexes.some(i => i.isUnique && i.columns.length === 1 && i.columns[0] === col.name);
+      const isUnique = table.indexes.some(
+        (i) => i.isUnique && i.columns.length === 1 && i.columns[0] === col.name,
+      );
       if (isUnique) colOpts.push('unique: true');
 
       lines.push(`  @Column({ ${colOpts.join(', ')} })`);
@@ -184,7 +203,9 @@ function generateEntityClass(table: Table): string {
       referencedColumnName: fk.referencedColumns[i],
     }));
     lines.push(`  @ManyToOne(() => ${relatedClass})`);
-    lines.push(`  @JoinColumn([${joinCols.map(j => `{ name: '${j.name}', referencedColumnName: '${j.referencedColumnName}' }`).join(', ')}])`);
+    lines.push(
+      `  @JoinColumn([${joinCols.map((j) => `{ name: '${j.name}', referencedColumnName: '${j.referencedColumnName}' }`).join(', ')}])`,
+    );
     lines.push(`  ${fieldName}!: ${relatedClass};`);
     lines.push('');
   }
@@ -204,7 +225,7 @@ export function generateTypeOrmEntities(schema: Schema): Map<string, string> {
   // index.ts barrel
   const barrelLines = [
     `// Generated by SchemaViz — ${schema.database}`,
-    ...schema.tables.map(t => {
+    ...schema.tables.map((t) => {
       const name = toPascalCase(t.name);
       return `export { ${name} } from './${name}';`;
     }),

@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { Schema } from '../types';
+import { Schema, DatabaseType } from '../types';
 import { computeDiff, generateMigrationSQL } from '../core/diff';
 
 interface DiffOptions {
@@ -7,6 +7,8 @@ interface DiffOptions {
   schema2: string;
   output?: string;
   migration?: string;
+  /** Explicit migration SQL dialect override (--db-type). */
+  dbType?: DatabaseType;
 }
 
 export async function diff(options: DiffOptions) {
@@ -19,17 +21,12 @@ export async function diff(options: DiffOptions) {
 
   const diffResult = computeDiff(schema1, schema2);
 
-  // Generate migration SQL
-  const migrationSQL = generateMigrationSQL(schema1.database, diffResult);
-
-  // Combine output
-  const output = {
-    diff: diffResult,
-    migration: migrationSQL,
-  };
+  // Generate migration SQL — explicit --db-type wins, then the schema's dialect, then postgresql
+  const dialect = options.dbType ?? schema1.type ?? schema2.type;
+  const migrationSQL = generateMigrationSQL(schema1.database, diffResult, dialect);
 
   if (options.output) {
-    fs.writeFileSync(options.output, JSON.stringify(output.diff, null, 2));
+    fs.writeFileSync(options.output, JSON.stringify(diffResult, null, 2));
     console.log(`Diff saved to ${options.output}`);
   }
 
@@ -41,5 +38,3 @@ export async function diff(options: DiffOptions) {
     console.log(migrationSQL);
   }
 }
-
-

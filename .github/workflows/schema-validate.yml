@@ -36,8 +36,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install schemaviz
-        run: npm install -g schemaviz
+      - name: Build schemaviz from this repository
+        # schemaviz is not published to npm; build the checked-out revision
+        # and invoke the CLI via `node dist/index.js`.
+        run: |
+          npm ci
+          npm run build
 
       - name: Find schema files
         id: find_schemas
@@ -64,7 +68,7 @@ jobs:
               WARN_FLAG="--fail-on-warning"
             fi
 
-            schemaviz validate \
+            node dist/index.js validate \
               --schema "$SCHEMA" \
               --format json \
               --output "${SCHEMA%.json}-validation.json" \

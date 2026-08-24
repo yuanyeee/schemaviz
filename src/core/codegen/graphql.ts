@@ -1,7 +1,10 @@
-import { Schema, Table, Column } from '../../types';
+import { Schema, Table } from '../../types';
 
 function sqlTypeToGraphQL(sqlType: string, nullable: boolean): string {
-  const t = sqlType.toUpperCase().replace(/\(.*\)/, '').trim();
+  const t = sqlType
+    .toUpperCase()
+    .replace(/\(.*\)/, '')
+    .trim();
   const map: Record<string, string> = {
     INTEGER: 'Int',
     INT: 'Int',
@@ -22,11 +25,16 @@ function sqlTypeToGraphQL(sqlType: string, nullable: boolean): string {
     VARCHAR: 'String',
     CHAR: 'String',
     NVARCHAR: 'String',
+    'CHARACTER VARYING': 'String',
+    CHARACTER: 'String',
     UUID: 'ID',
     JSON: 'String',
     JSONB: 'String',
     TIMESTAMP: 'String',
     TIMESTAMPTZ: 'String',
+    'TIMESTAMP WITH TIME ZONE': 'String',
+    'TIMESTAMP WITHOUT TIME ZONE': 'String',
+    'DOUBLE PRECISION': 'Float',
     DATE: 'String',
     TIME: 'String',
     DATETIME: 'String',
@@ -54,7 +62,7 @@ function toSingular(name: string): string {
   return name;
 }
 
-function generateType(table: Table, schema: Schema): string {
+function generateType(table: Table): string {
   const typeName = toPascalCase(toSingular(table.name));
   const lines: string[] = [];
   lines.push(`type ${typeName} {`);
@@ -141,7 +149,7 @@ export function generateGraphQLSchema(schema: Schema): string {
 
   // Types
   for (const table of schema.tables) {
-    lines.push(generateType(table, schema));
+    lines.push(generateType(table));
     lines.push('');
   }
 

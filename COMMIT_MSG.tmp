@@ -1,0 +1,24 @@
+feat: apply improvement plan T1-T4 (security, accuracy, strict TS, web split, batch queries, CI)
+
+Phase 1 (accuracy):
+- column length/precision/scale extraction (T1.1, columnType parser)
+- diff: type+attr/default/index/FK change detection, dialect-aware migration SQL (T1.2-T1.4)
+
+Phase 2 (security):
+- serve: access token gate with cookie handshake (T2.1)
+- HTML/JS injection escaping in all pages (T2.2)
+- stop persisting connection passwords; 0600 connection file (T2.3)
+- serve mermaid locally instead of CDN (T2.4)
+
+Phase 3 (structure):
+- split webServer.ts 3,069 -> 152 lines into web/{router,pages,api,escape,plantuml,connectionStore} (T3.1)
+- adapters: batch metadata queries, O(1) per category instead of O(N) (T3.2)
+- strict TypeScript, zero explicit any (T3.3)
+- dead code and dependency cleanup (T3.4)
+
+Phase 4 (engineering):
+- self CI workflow; fix template workflows to build from repo (T4.1/T4.2)
+- adapter tests: sqlite regression baseline + fake-pool batch query tests (T4.3)
+- eslint (typescript-eslint) + prettier, lint in CI (T4.4)
+
+Tests: 109 -> 189 passing

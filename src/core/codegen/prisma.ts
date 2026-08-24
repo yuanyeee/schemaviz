@@ -1,8 +1,11 @@
-import { Schema, Table, Column } from '../../types';
+import { Schema, Table, Column, DatabaseType } from '../../types';
 
 // Maps common SQL types to Prisma scalar types
 function sqlTypeToPrisma(sqlType: string): string {
-  const t = sqlType.toUpperCase().replace(/\(.*\)/, '').trim();
+  const t = sqlType
+    .toUpperCase()
+    .replace(/\(.*\)/, '')
+    .trim();
   const map: Record<string, string> = {
     INTEGER: 'Int',
     INT: 'Int',
@@ -24,11 +27,17 @@ function sqlTypeToPrisma(sqlType: string): string {
     CHAR: 'String',
     NVARCHAR: 'String',
     CLOB: 'String',
+    // PostgreSQL reports its canonical type names via information_schema
+    'CHARACTER VARYING': 'String',
+    CHARACTER: 'String',
     UUID: 'String',
     JSON: 'Json',
     JSONB: 'Json',
     TIMESTAMP: 'DateTime',
     TIMESTAMPTZ: 'DateTime',
+    'TIMESTAMP WITH TIME ZONE': 'DateTime',
+    'TIMESTAMP WITHOUT TIME ZONE': 'DateTime',
+    'DOUBLE PRECISION': 'Float',
     DATE: 'DateTime',
     TIME: 'DateTime',
     DATETIME: 'DateTime',
@@ -37,6 +46,30 @@ function sqlTypeToPrisma(sqlType: string): string {
     BINARY: 'Bytes',
   };
   return map[t] ?? 'String';
+}
+
+// Native type attribute carrying length/precision (e.g. @db.VarChar(255), @db.Decimal(10, 2)).
+// Only emitted for dialects where Prisma supports these attributes.
+function prismaNativeTypeAttr(
+  col: Column,
+  prismaType: string,
+  dbType?: DatabaseType,
+): string | null {
+  if (!dbType || dbType === 'sqlite') return null;
+
+  if (prismaType === 'String' && col.length != null) {
+    const t = col.type.toLowerCase().trim();
+    const fixed = t === 'char' || t === 'character' || t === 'nchar';
+    const national = t.startsWith('nchar') || t.startsWith('nvarchar');
+    const name = fixed ? (national ? 'NChar' : 'Char') : national ? 'NVarChar' : 'VarChar';
+    return `@db.${name}(${col.length})`;
+  }
+
+  if (prismaType === 'Decimal' && col.precision != null && col.scale != null) {
+    return `@db.Decimal(${col.precision}, ${col.scale})`;
+  }
+
+  return null;
 }
 
 function toCamelCase(str: string): string {
@@ -63,22 +96,18 @@ function generatePrismaModel(table: Table, schema: Schema): string {
 
   // Pre-compute single-column unique index columns for @unique attribute
   const singleUniqueColumns = new Set(
-    table.indexes
-      .filter(i => i.isUnique && i.columns.length === 1)
-      .map(i => i.columns[0]),
+    table.indexes.filter((i) => i.isUnique && i.columns.length === 1).map((i) => i.columns[0]),
   );
-
-  // Find FK relations
-  const fkColNames = new Set(table.foreignKeys.flatMap(fk => fk.columns));
 
   for (const col of table.columns) {
     const prismaType = sqlTypeToPrisma(col.type);
     const nullable = col.nullable ? '?' : '';
-    const defaultAttr = col.isPrimaryKey && ['Int', 'BigInt'].includes(prismaType)
-      ? ' @default(autoincrement())'
-      : col.isPrimaryKey && prismaType === 'String'
-      ? ' @default(uuid())'
-      : '';
+    const defaultAttr =
+      col.isPrimaryKey && ['Int', 'BigInt'].includes(prismaType)
+        ? ' @default(autoincrement())'
+        : col.isPrimaryKey && prismaType === 'String'
+          ? ' @default(uuid())'
+          : '';
     const pkAttr = col.isPrimaryKey ? ' @id' : '';
     // Single-column unique indexes become @unique on the field (not @@unique)
     const uniqueAttr = !col.isPrimaryKey && singleUniqueColumns.has(col.name) ? ' @unique' : '';
@@ -90,6 +119,10 @@ function generatePrismaModel(table: Table, schema: Schema): string {
       fieldLine += ` @map("${col.name}")`;
     }
 
+    // Native type attribute (length / precision) when available
+    const dbAttr = prismaNativeTypeAttr(col, prismaType, schema.type);
+    if (dbAttr) fieldLine += ` ${dbAttr}`;
+
     lines.push(fieldLine);
   }
 
@@ -97,7 +130,9 @@ function generatePrismaModel(table: Table, schema: Schema): string {
   for (const fk of table.foreignKeys) {
     const refModelName = toPascalCase(toSingular(fk.referencedTable));
     const fieldName = toCamelCase(toSingular(fk.referencedTable));
-    lines.push(`  ${fieldName}  ${refModelName} @relation(fields: [${fk.columns.map(toCamelCase).join(', ')}], references: [${fk.referencedColumns.map(toCamelCase).join(', ')}])`);
+    lines.push(
+      `  ${fieldName}  ${refModelName} @relation(fields: [${fk.columns.map(toCamelCase).join(', ')}], references: [${fk.referencedColumns.map(toCamelCase).join(', ')}])`,
+    );
   }
 
   // Multi-column unique and non-unique indexes as model-level attributes
@@ -110,8 +145,10 @@ function generatePrismaModel(table: Table, schema: Schema): string {
     }
   }
 
-  if (table.name !== toPascalCase(toSingular(table.name)).toLowerCase() + 's' &&
-      table.name !== toPascalCase(toSingular(table.name)).toLowerCase()) {
+  if (
+    table.name !== toPascalCase(toSingular(table.name)).toLowerCase() + 's' &&
+    table.name !== toPascalCase(toSingular(table.name)).toLowerCase()
+  ) {
     lines.push(`  @@map("${table.name}")`);
   }
 

@@ -28,8 +28,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install schemaviz
-        run: npm install -g schemaviz
+      - name: Build schemaviz from this repository
+        # schemaviz is not published to npm; build the checked-out revision
+        # and invoke the CLI via `node dist/index.js`.
+        run: |
+          npm ci
+          npm run build
 
       - name: Extract schema from base branch
         run: |
@@ -46,7 +50,7 @@ jobs:
         id: validate
         run: |
           if [ -f schema.json ]; then
-            schemaviz validate --schema schema.json --format json --output /tmp/validation.json || true
+            node dist/index.js validate --schema schema.json --format json --output /tmp/validation.json || true
             echo "has_schema=true" >> $GITHUB_OUTPUT
           else
             echo "has_schema=false" >> $GITHUB_OUTPUT
@@ -56,7 +60,7 @@ jobs:
         id: diff
         if: steps.validate.outputs.has_schema == 'true'
         run: |
-          schemaviz diff \
+          node dist/index.js diff \
             --schema1 /tmp/schema-base.json \
             --schema2 schema.json \
             --output /tmp/diff.json \

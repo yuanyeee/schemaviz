@@ -3,10 +3,10 @@ import * as path from 'path';
 import { Schema } from '../types';
 
 export interface Snapshot {
-  id: string;           // short hash
-  tag: string;          // user-provided label or auto-generated
-  savedAt: string;      // ISO timestamp
-  schemaFile: string;   // original source path
+  id: string; // short hash
+  tag: string; // user-provided label or auto-generated
+  savedAt: string; // ISO timestamp
+  schemaFile: string; // original source path
   schema: Schema;
 }
 
@@ -33,7 +33,9 @@ function snapshotPath(baseDir: string, id: string): string {
 function generateId(): string {
   // 8-char hex id based on timestamp + random
   const ts = Date.now().toString(16);
-  const rnd = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, '0');
+  const rnd = Math.floor(Math.random() * 0xffff)
+    .toString(16)
+    .padStart(4, '0');
   return (ts + rnd).slice(-8);
 }
 
@@ -57,11 +59,7 @@ function saveIndex(baseDir: string, index: HistoryIndex): void {
   fs.writeFileSync(indexPath(baseDir), JSON.stringify(index, null, 2), 'utf-8');
 }
 
-export function saveSnapshot(
-  baseDir: string,
-  schemaFile: string,
-  tag: string,
-): Snapshot {
+export function saveSnapshot(baseDir: string, schemaFile: string, tag: string): Snapshot {
   ensureDirs(baseDir);
 
   const schema: Schema = JSON.parse(fs.readFileSync(schemaFile, 'utf-8'));
@@ -115,8 +113,8 @@ export function loadSnapshot(baseDir: string, idOrTag: string): Snapshot | null 
 
   // Find by id prefix or exact tag
   const meta =
-    index.snapshots.find(s => s.id.startsWith(idOrTag)) ??
-    index.snapshots.find(s => s.tag === idOrTag);
+    index.snapshots.find((s) => s.id.startsWith(idOrTag)) ??
+    index.snapshots.find((s) => s.tag === idOrTag);
 
   if (!meta) return null;
 
@@ -128,9 +126,7 @@ export function loadSnapshot(baseDir: string, idOrTag: string): Snapshot | null 
 
 export function deleteSnapshot(baseDir: string, idOrTag: string): boolean {
   const index = loadIndex(baseDir);
-  const idx = index.snapshots.findIndex(
-    s => s.id.startsWith(idOrTag) || s.tag === idOrTag,
-  );
+  const idx = index.snapshots.findIndex((s) => s.id.startsWith(idOrTag) || s.tag === idOrTag);
   if (idx === -1) return false;
 
   const [meta] = index.snapshots.splice(idx, 1);

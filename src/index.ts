@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { extract } from './commands/extract';
 import { diagram } from './commands/diagram';
 import { diff } from './commands/diff';
@@ -37,6 +37,12 @@ program
   .requiredOption('-s2, --schema2 <path>', 'Second schema file')
   .option('-o, --output <path>', 'Output diff JSON file path')
   .option('-m, --migration <path>', 'Output migration SQL file path')
+  .addOption(
+    new Option(
+      '--db-type <type>',
+      'Dialect for migration SQL; defaults to the schema file type',
+    ).choices(['postgresql', 'mysql', 'sqlite', 'sqlserver']),
+  )
   .action(diff);
 
 program
@@ -55,6 +61,10 @@ program
   .option('-p, --port <port>', 'Port to listen on', '3000')
   .option('-H, --host <host>', 'Host to bind to', 'localhost')
   .option('-w, --watch', 'Reload schema on every request', false)
+  .option(
+    '--token <token>',
+    'Access token for the UI/APIs (auto-generated when binding a non-localhost host)',
+  )
   .action(serve);
 
 program

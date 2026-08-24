@@ -64,7 +64,6 @@ function printTextReport(result: ReturnType<typeof validateSchema>) {
     console.log(`Table: ${table}`);
     console.log('─'.repeat(60));
     for (const issue of issues) {
-      const col = issue.column ? `.${issue.column}` : '';
       console.log(`  ${LEVEL_ICON[issue.level]}  [${issue.rule}]`);
       console.log(`             ${issue.message}`);
       console.log(`             → ${issue.suggestion}`);
@@ -116,7 +115,9 @@ function buildTextReport(result: ReturnType<typeof validateSchema>): string {
   }
 
   lines.push('═'.repeat(60));
-  lines.push(`Errors: ${result.errorCount}, Warnings: ${result.warningCount}, Info: ${result.infoCount}`);
+  lines.push(
+    `Errors: ${result.errorCount}, Warnings: ${result.warningCount}, Info: ${result.infoCount}`,
+  );
   lines.push(result.passed ? 'Result: PASSED' : 'Result: FAILED');
 
   return lines.join('\n');

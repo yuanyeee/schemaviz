@@ -1,6 +1,5 @@
 import * as path from 'path';
 import { saveSnapshot, loadIndex, loadSnapshot, deleteSnapshot } from '../core/history';
-import { Schema } from '../types';
 
 interface SnapshotOptions {
   schema: string;
@@ -93,7 +92,9 @@ export async function historyShow(options: HistoryShowOptions) {
         col.isPrimaryKey ? 'PK' : '',
         col.isForeignKey ? 'FK' : '',
         col.nullable ? 'null' : '',
-      ].filter(Boolean).join(' ');
+      ]
+        .filter(Boolean)
+        .join(' ');
       console.log(`      ${col.name.padEnd(20)} ${col.type.padEnd(20)} ${flags}`);
     }
   }

@@ -6,6 +6,7 @@ interface ServeOptions {
   port: string;
   host: string;
   watch: boolean;
+  token?: string;
 }
 
 export async function serve(options: ServeOptions) {
@@ -27,12 +28,14 @@ export async function serve(options: ServeOptions) {
       port,
       host: options.host,
       watch: options.watch,
+      token: options.token,
     });
-  } catch (err: any) {
-    if (err.code === 'EADDRINUSE') {
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === 'EADDRINUSE') {
       console.error(`Port ${port} is already in use. Try --port <other-port>`);
     } else {
-      console.error(`Failed to start server: ${err.message}`);
+      console.error(`Failed to start server: ${e.message}`);
     }
     process.exit(1);
   }

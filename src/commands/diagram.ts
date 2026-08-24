@@ -11,8 +11,8 @@ interface DiagramOptions {
 
 export async function diagram(options: DiagramOptions) {
   const format = (options.format as DiagramFormat) || 'mermaid';
-  const outputFormat = options.output?.split('.').pop() as ImageFormat || format as any;
-  
+  const outputFormat: string = options.output?.split('.').pop() || format;
+
   console.log('Generating ER diagram...');
   console.log(`Schema: ${options.schema}`);
   console.log(`Format: ${format}`);
@@ -27,7 +27,9 @@ export async function diagram(options: DiagramOptions) {
     }
 
     if (format !== 'mermaid') {
-      console.warn(`Warning: Image export only supports Mermaid rendering. Ignoring --format ${format}.`);
+      console.warn(
+        `Warning: Image export only supports Mermaid rendering. Ignoring --format ${format}.`,
+      );
     }
 
     // Pass raw Mermaid ER code (no Markdown wrapper) to the image renderer
